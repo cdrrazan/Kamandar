@@ -50,7 +50,9 @@
 #   OUTPUT / --browser,-b (terminal) surface: terminal | browser; flag forces
 #                                     browser and overrides OUTPUT
 #   WATCH_SECONDS / --watch N  (0)    browser only: re-fetch + rewrite every N s
-#   PROJECT_URL           (for #3)    board/view URL; org + project number read
+#   PROJECT_URL           (for #3)    board/view URL; org + project number read.
+#                                     When set, PR buckets are also scoped to
+#                                     that org (else account-wide).
 #   NOT_STARTED_STATUSES  (Todo,Backlog,No Status)  case-insensitive status set
 #   ITERATION_FILTER      (off)       `current` restricts #3 to the active sprint
 #   ITERATION_FIELD       (Iteration) board's iteration field name
@@ -309,12 +311,20 @@ module Kamandar
 
     # -- search strings -------------------------------------------------------
 
-    def reviews_owed_query(login)
-      "is:open is:pr review-requested:#{login} archived:false"
+    # When `org` is given (derived from PROJECT_URL), the search is scoped to
+    # that org so PR buckets match the project's domain instead of the whole
+    # account.
+    def reviews_owed_query(login, org: nil)
+      scoped("is:open is:pr review-requested:#{login}", org)
     end
 
-    def my_prs_query(login)
-      "is:open is:pr author:#{login} archived:false"
+    def my_prs_query(login, org: nil)
+      scoped("is:open is:pr author:#{login}", org)
+    end
+
+    def scoped(base, org)
+      base += " org:#{org}" if org && !org.to_s.empty?
+      "#{base} archived:false"
     end
 
     # -- GraphQL builders -----------------------------------------------------
@@ -728,11 +738,12 @@ module Kamandar
     end
 
     # Run both PR searches in one call. Returns [owed_nodes, mine_nodes].
-    def fetch_prs(login, token)
+    # `org` (optional) scopes both searches to a single organization.
+    def fetch_prs(login, token, org: nil)
       data = graphql(
         Engine.build_pr_query,
-        { "owed" => Engine.reviews_owed_query(login),
-          "mine" => Engine.my_prs_query(login) },
+        { "owed" => Engine.reviews_owed_query(login, org: org),
+          "mine" => Engine.my_prs_query(login, org: org) },
         token
       )
       owed = (data.dig("owed", "nodes") || []).reject(&:empty?)
@@ -912,18 +923,19 @@ module Kamandar
 
     # Fetch everything, then classify once. The buckets feed whichever surface.
     def fetch_and_classify(config)
-      owed, mine = GitHub.fetch_prs(config[:login], config[:token])
+      # When PROJECT_URL is set, scope the PR searches to that project's org.
+      parsed = config[:project_url] ? Engine.parse_project_url(config[:project_url]) : nil
+      org = parsed && parsed[:org]
+
+      owed, mine = GitHub.fetch_prs(config[:login], config[:token], org: org)
 
       project_items = []
       iterations = nil
-      if config[:project_url]
-        parsed = Engine.parse_project_url(config[:project_url])
-        if parsed
-          project_items, iterations = GitHub.fetch_board(
-            parsed[:org], parsed[:num], config[:token],
-            iteration_field: config[:iteration_field]
-          )
-        end
+      if parsed
+        project_items, iterations = GitHub.fetch_board(
+          parsed[:org], parsed[:num], config[:token],
+          iteration_field: config[:iteration_field]
+        )
       end
 
       Engine.classify(

@@ -158,6 +158,22 @@ check "#3 project filter keeps mine+Todo and mine+Backlog",
       kept.map { |i| i["content"]["number"] }.sort, [1, 4]
 
 # =============================================================================
+# Search query scoping
+# =============================================================================
+check "owed query is account-wide without org",
+      E.reviews_owed_query("me"),
+      "is:open is:pr review-requested:me archived:false"
+check "owed query scoped to org when given",
+      E.reviews_owed_query("me", org: "Recognize"),
+      "is:open is:pr review-requested:me org:Recognize archived:false"
+check "mine query scoped to org when given",
+      E.my_prs_query("me", org: "Recognize"),
+      "is:open is:pr author:me org:Recognize archived:false"
+check "empty org is treated as no scope",
+      E.my_prs_query("me", org: ""),
+      "is:open is:pr author:me archived:false"
+
+# =============================================================================
 # URL parse
 # =============================================================================
 check "URL parse orgs/Recognize/projects/10/views/5",

@@ -13,7 +13,7 @@ quiet — in your terminal or a self-contained browser page.
 
 ![Ruby](https://img.shields.io/badge/Ruby-3.2%2B-CC342D?logo=ruby&logoColor=white)
 ![Dependencies](https://img.shields.io/badge/dependencies-stdlib%20only-2ea44f)
-![Tests](https://img.shields.io/badge/tests-35%20passing-2ea44f)
+![Tests](https://img.shields.io/badge/tests-39%20passing-2ea44f)
 ![Serverless](https://img.shields.io/badge/serverless-no%20server%20·%20no%20DB%20·%20no%20OAuth-0969da)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![PRs welcome](https://img.shields.io/badge/PRs-welcome-ff69b4)
@@ -91,7 +91,7 @@ Kamandar/
 ├── lib/
 │   └── kamandar.rb     # engine + both surfaces (single file, stdlib only)
 ├── test/
-│   └── test_kamandar.rb  # acceptance tests — zero network, 35 cases
+│   └── test_kamandar.rb  # acceptance tests — zero network, 39 cases
 ├── README.md
 ├── CONTRIBUTING.md
 ├── SECURITY.md
@@ -111,7 +111,7 @@ Kamandar/
 | `GH_LOGIN` | ✅ | — | Your GitHub username |
 | `OUTPUT` / `--browser`, `-b` | | `terminal` | Surface: `terminal` or `browser`. The flag forces browser and overrides `OUTPUT`. |
 | `WATCH_SECONDS` / `--watch N` | | `0` (off) | Browser only: re-fetch + rewrite the page every N seconds |
-| `PROJECT_URL` | for #3 | — | Board/view URL, e.g. `https://github.com/orgs/Recognize/projects/10/views/5` |
+| `PROJECT_URL` | for #3 | — | Board/view URL, e.g. `https://github.com/orgs/Recognize/projects/10/views/5`. When set, PR buckets (#1, #2, #4, bonus) are also scoped to that **org**; unset = account-wide. |
 | `NOT_STARTED_STATUSES` | | `Todo,Backlog,No Status` | Status names treated as "not started" (case-insensitive) |
 | `ITERATION_FILTER` | | `off` | `current` restricts #3 to the active sprint |
 | `ITERATION_FIELD` | | `Iteration` | Board's iteration field name |
@@ -228,7 +228,7 @@ and fabricated fixtures — **zero network**.
 ```sh
 ruby test/test_kamandar.rb
 # ...
-# 35 passed, 0 failed
+# 39 passed, 0 failed
 ```
 
 ---
