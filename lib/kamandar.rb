@@ -700,11 +700,14 @@ module Kamandar
     # this and prints a clean one-line message instead of a raw stack trace.
     class Error < StandardError; end
 
-    OPEN_TIMEOUT = 10 # seconds to establish the TCP/TLS connection
+    OPEN_TIMEOUT = 8  # seconds to establish the TCP/TLS connection
     READ_TIMEOUT = 20 # seconds to wait for the response
+    MAX_RETRIES  = 2  # extra attempts after the first, on transient blips
+    RETRY_BACKOFF = 1.0 # base seconds; waits backoff*1, backoff*2, ...
 
     # Connection-level failures we want to surface as a friendly Error rather
-    # than a raw stack trace.
+    # than a raw stack trace. Also the set we retry on — a flapping route often
+    # recovers within seconds.
     NETWORK_ERRORS = [
       Net::OpenTimeout, Net::ReadTimeout, SocketError, OpenSSL::SSL::SSLError,
       Errno::ECONNREFUSED, Errno::ECONNRESET, Errno::EHOSTUNREACH, Errno::ENETUNREACH
@@ -712,7 +715,30 @@ module Kamandar
 
     module_function
 
+    # Run `block`, retrying up to `max` times on a transient network error with
+    # linear backoff. Re-raises the last error once attempts are exhausted.
+    # `backoff: 0` disables sleeping (used by tests).
+    def with_retries(max: MAX_RETRIES, backoff: RETRY_BACKOFF)
+      attempt = 0
+      begin
+        yield
+      rescue *NETWORK_ERRORS
+        attempt += 1
+        raise if attempt > max
+        sleep(backoff * attempt) if backoff.positive?
+        retry
+      end
+    end
+
     def graphql(query, variables, token)
+      with_retries { request_graphql(query, variables, token) }
+    rescue *NETWORK_ERRORS => e
+      raise Error, "could not reach GitHub (#{e.class}: #{e.message}) after #{MAX_RETRIES + 1} attempts. Check your connection and try again."
+    end
+
+    # One GraphQL round-trip. Raises raw NETWORK_ERRORS (so with_retries can act)
+    # and a GitHub::Error for GraphQL/HTTP-level failures (not retried).
+    def request_graphql(query, variables, token)
       uri = URI(GRAPHQL_ENDPOINT)
       http = Net::HTTP.new(uri.host, uri.port)
       http.use_ssl = true
@@ -733,8 +759,6 @@ module Kamandar
         raise Error, "HTTP #{res.code}: #{res.body}"
       end
       body["data"]
-    rescue *NETWORK_ERRORS => e
-      raise Error, "could not reach GitHub (#{e.class}: #{e.message}). Check your connection and try again."
     end
 
     # Run both PR searches in one call. Returns [owed_nodes, mine_nodes].

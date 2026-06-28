@@ -266,6 +266,29 @@ val, noise = without_tty { Kamandar::CLI.with_spinner("loading") { 7 * 6 } }
 check "#17a with_spinner returns block value (non-tty)", val, 42
 ok "#17b with_spinner writes nothing on non-tty", noise.empty?
 
+# 18b. with_retries: succeeds after transient failures, no sleeping in tests.
+calls = 0
+res = Kamandar::GitHub.with_retries(max: 2, backoff: 0) do
+  calls += 1
+  raise SocketError, "blip" if calls < 3
+  "ok"
+end
+check "#18b1 with_retries returns after recovering", res, "ok"
+check "#18b2 with_retries used all attempts", calls, 3
+
+# 18c. with_retries re-raises once attempts are exhausted.
+tries = 0
+exhausted = begin
+  Kamandar::GitHub.with_retries(max: 1, backoff: 0) do
+    tries += 1
+    raise SocketError, "down"
+  end
+rescue SocketError => e
+  e.message
+end
+check "#18c1 with_retries re-raises after exhaustion", exhausted, "down"
+check "#18c2 with_retries attempted max+1 times", tries, 2
+
 # 18. with_spinner propagates exceptions raised inside the block.
 raised = nil
 without_tty do
