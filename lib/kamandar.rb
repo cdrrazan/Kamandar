@@ -10,13 +10,15 @@
 # Personal tool, single user, GitHub-only, serverless. Stdlib only.
 #
 # -----------------------------------------------------------------------------
-# WHAT IT SHOWS — four buckets (+ one bonus)
+# WHAT IT SHOWS — five buckets (+ one bonus)
 # -----------------------------------------------------------------------------
 #   1. Reviews you owe        — open PRs where review is requested *from you*.
 #   2. Currently building     — your own open *draft* PRs (WIP).
 #   3. Assigned, not started  — Projects V2 issues assigned to you whose Status
 #                               is in a configurable "not started" set.
-#   4. Your PRs gone quiet    — your *ready* (non-draft) PRs where the ball is
+#   4. Submitted for review   — Projects V2 issues assigned to you whose Status
+#                               is in a configurable "in review" set.
+#   5. Your PRs gone quiet    — your *ready* (non-draft) PRs where the ball is
 #                               on the reviewer and the wait exceeds a threshold.
 #   +  Ready, no reviewer     — your non-draft PRs with nobody asked to review
 #      requested (bonus)         and no reviews yet (invisible to everyone).
@@ -63,9 +65,10 @@
 #                                     you're prompted to pick a mode (Enter =
 #                                     global). Skipped for pipes/cron/browser.
 #   NOT_STARTED_STATUSES  (Todo,Backlog,No Status)  case-insensitive status set
+#   REVIEW_STATUSES       (In Review,Review,Needs Review)  statuses for bucket #4
 #   ITERATION_FILTER      (off)       `current` restricts #3 to the active sprint
 #   ITERATION_FIELD       (Iteration) board's iteration field name
-#   STALE_DAYS            (2)         threshold for bucket #4
+#   STALE_DAYS            (2)         threshold for bucket #5
 #   DAY_MODE              (business)  business (skip Sat/Sun) | calendar
 #
 # -----------------------------------------------------------------------------
@@ -171,7 +174,7 @@ module Kamandar
       end
     end
 
-    # -- bucket #4: the handoff-vs-reviewer race ------------------------------
+    # -- bucket #5: the handoff-vs-reviewer race ------------------------------
     # Operates on raw GraphQL PR node hashes (string keys) so the same code
     # classifies fixtures and live data.
 
@@ -259,14 +262,14 @@ module Kamandar
       end
     end
 
-    # Keep items that are Issues assigned to `login` whose Status is in the
-    # not-started set (case-insensitive, trimmed). When iteration filtering is
-    # on and an iteration field exists, also require the active iteration.
-    def assigned_not_started(items, login:, not_started:,
+    # Keep items that are Issues assigned to `login` whose Status is in `statuses`
+    # (case-insensitive, trimmed). When iteration filtering is on and an
+    # iteration field exists, also require the active iteration.
+    def assigned_with_status(items, login:, statuses:,
                              iteration_filter: "off",
                              iteration_field: "Iteration",
                              iterations: nil, today: nil)
-      wanted = not_started.map { |s| s.to_s.strip.downcase }
+      wanted = statuses.map { |s| s.to_s.strip.downcase }
       active = nil
       filtering = iteration_filter.to_s == "current" && iterations && !iterations.empty?
       active = active_iteration(iterations, today: today) if filtering
@@ -291,6 +294,17 @@ module Kamandar
 
         true
       end
+    end
+
+    # Issues assigned to you whose Status is in the "not started" set.
+    def assigned_not_started(items, login:, not_started:, **opts)
+      assigned_with_status(items, login: login, statuses: not_started, **opts)
+    end
+
+    # Issues assigned to you whose Status is in the "in review" set — issues you
+    # submitted for review on the board.
+    def assigned_in_review(items, login:, review_statuses:, **opts)
+      assigned_with_status(items, login: login, statuses: review_statuses, **opts)
     end
 
     # -- current-sprint filter (§6) -------------------------------------------
@@ -518,8 +532,8 @@ module Kamandar
     # node arrays plus config, returns the classified hash that both surfaces
     # consume. Surfaces never re-query or re-classify.
     #
-    # config keys: :login, :not_started, :stale_days, :day_mode,
-    #              :iteration_filter, :iteration_field
+    # config keys: :login, :not_started, :review_statuses, :stale_days,
+    #              :day_mode, :iteration_filter, :iteration_field
     def classify(owed_prs:, my_prs:, project_items:, iterations: nil,
                  config:, today:)
       mode = config[:day_mode]
@@ -538,20 +552,27 @@ module Kamandar
 
       forgot = my_prs.select { |pr| forgot_reviewer?(pr) }.map { |pr| normalize_pr(pr) }
 
-      assigned = assigned_not_started(
-        project_items,
+      board_opts = {
         login: config[:login],
-        not_started: config[:not_started],
         iteration_filter: config[:iteration_filter],
         iteration_field: config[:iteration_field],
         iterations: iterations,
         today: today
+      }
+
+      assigned = assigned_not_started(
+        project_items, not_started: config[:not_started], **board_opts
+      ).map { |item| normalize_item(item) }
+
+      in_review = assigned_in_review(
+        project_items, review_statuses: config[:review_statuses] || [], **board_opts
       ).map { |item| normalize_item(item) }
 
       {
         reviews_owed: reviews_owed,
         wip: wip,
         assigned_not_started: assigned,
+        in_review: in_review,
         stale: stale,
         forgot_reviewer: forgot
       }
@@ -562,6 +583,7 @@ module Kamandar
       [:reviews_owed,         "Reviews you owe",            "Nothing waiting on your review. \u{1F389}"],
       [:wip,                  "Currently building (WIP)",   "No drafts in flight."],
       [:assigned_not_started, "Assigned, not started",      "Nothing assigned and waiting to start."],
+      [:in_review,            "Submitted for review",       "No issues waiting on review."],
       [:stale,                "Your PRs gone quiet",        "No PRs have gone quiet."],
       [:forgot_reviewer,      "Ready, no reviewer requested", "Every ready PR has a reviewer."]
     ].freeze
@@ -650,6 +672,7 @@ module Kamandar
       reviews_owed:         { icon: "\u{1F4E5}", color: "#0969da" }, # 📥
       wip:                  { icon: "\u{1F528}", color: "#8250df" }, # 🔨
       assigned_not_started: { icon: "\u{1F4CB}", color: "#1a7f37" }, # 📋
+      in_review:            { icon: "\u{1F440}", color: "#6e40c9" }, # 👀
       stale:                { icon: "\u{23F3}",  color: "var(--warn)" }, # ⏳
       forgot_reviewer:      { icon: "\u{1F648}", color: "#9a6700" }  # 🙈
     }.freeze
@@ -939,6 +962,9 @@ module Kamandar
       not_started = (env["NOT_STARTED_STATUSES"] || "Todo,Backlog,No Status")
                     .split(",").map(&:strip).reject(&:empty?)
 
+      review_statuses = (env["REVIEW_STATUSES"] || "In Review,Review,Needs Review")
+                        .split(",").map(&:strip).reject(&:empty?)
+
       project_url = env["PROJECT_URL"]
       project_org = (Engine.parse_project_url(project_url) || {})[:org]
       scope_raw = flags[:scope] || env["SCOPE"] || "global"
@@ -951,6 +977,7 @@ module Kamandar
         scope: Engine.parse_scope(scope_raw, project_org: project_org),
         scope_given: scope_given,
         not_started: not_started,
+        review_statuses: review_statuses,
         iteration_filter: (env["ITERATION_FILTER"] || "off"),
         iteration_field: (env["ITERATION_FIELD"] || "Iteration"),
         stale_days: (env["STALE_DAYS"] || "2").to_i,

@@ -13,7 +13,7 @@ quiet — in your terminal or a self-contained browser page.
 
 ![Ruby](https://img.shields.io/badge/Ruby-3.2%2B-CC342D?logo=ruby&logoColor=white)
 ![Dependencies](https://img.shields.io/badge/dependencies-stdlib%20only-2ea44f)
-![Tests](https://img.shields.io/badge/tests-78%20passing-2ea44f)
+![Tests](https://img.shields.io/badge/tests-79%20passing-2ea44f)
 ![Serverless](https://img.shields.io/badge/serverless-no%20server%20·%20no%20DB%20·%20no%20OAuth-0969da)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![PRs welcome](https://img.shields.io/badge/PRs-welcome-ff69b4)
@@ -46,14 +46,15 @@ Kamandar for @you  —  2026-06-22 09:14  (business days)
 
 ---
 
-## ✨ What it shows — four buckets (+ one bonus)
+## ✨ What it shows — five buckets (+ one bonus)
 
 | # | Bucket | What lands here |
 |---|--------|-----------------|
 | 1 | 📥 **Reviews you owe** | Open PRs where review is requested *from you* |
 | 2 | 🔨 **Currently building (WIP)** | Your own open **draft** PRs |
 | 3 | 📋 **Assigned, not started** | Projects V2 issues assigned to you whose **Status** is in a configurable "not started" set |
-| 4 | ⏳ **Your PRs gone quiet** | Your **ready** PRs where the ball is on the reviewer past a threshold |
+| 4 | 👀 **Submitted for review** | Projects V2 issues assigned to you whose **Status** is in a configurable "in review" set |
+| 5 | ⏳ **Your PRs gone quiet** | Your **ready** PRs where the ball is on the reviewer past a threshold |
 | ➕ | 🙈 **Ready, no reviewer requested** | *(bonus)* Your ready PRs with nobody asked to review and no reviews yet — silently invisible to everyone |
 
 ---
@@ -95,7 +96,7 @@ Kamandar/
 ├── lib/
 │   └── kamandar.rb     # engine + both surfaces (single file, stdlib only)
 ├── test/
-│   └── test_kamandar.rb  # acceptance tests — zero network, 78 cases
+│   └── test_kamandar.rb  # acceptance tests — zero network, 79 cases
 ├── README.md
 ├── CONTRIBUTING.md
 ├── SECURITY.md
@@ -116,11 +117,12 @@ Kamandar/
 | `OUTPUT` / `--browser`, `-b` | | `terminal` | Surface: `terminal` or `browser`. The flag forces browser and overrides `OUTPUT`. |
 | `WATCH_SECONDS` / `--watch N` | | `0` (off) | Browser only: re-fetch + rewrite the page every N seconds |
 | `PROJECT_URL` | for #3 | — | Board/view URL, e.g. `https://github.com/orgs/Recognize/projects/10/views/5` |
-| `SCOPE` / `--scope` | | `global` | Scope for PR buckets (#1, #2, #4, bonus). One of `global`, `org[:NAME]`, `repo:owner/name`, `project`. See [Scope](#-scope). |
-| `NOT_STARTED_STATUSES` | | `Todo,Backlog,No Status` | Status names treated as "not started" (case-insensitive) |
+| `SCOPE` / `--scope` | | `global` | Scope for PR buckets (#1, #2, #5, bonus). One of `global`, `org[:NAME]`, `repo:owner/name`, `project`. See [Scope](#-scope). |
+| `NOT_STARTED_STATUSES` | | `Todo,Backlog,No Status` | Status names treated as "not started" (case-insensitive) — bucket #3 |
+| `REVIEW_STATUSES` | | `In Review,Review,Needs Review` | Status names treated as "in review" (case-insensitive) — bucket #4 |
 | `ITERATION_FILTER` | | `off` | `current` restricts #3 to the active sprint |
 | `ITERATION_FIELD` | | `Iteration` | Board's iteration field name |
-| `STALE_DAYS` | | `2` | Threshold (in days) for bucket #4 |
+| `STALE_DAYS` | | `2` | Threshold (in days) for bucket #5 |
 | `DAY_MODE` | | `business` | `business` (skip Sat/Sun) or `calendar` |
 
 Only the **org** and **project number** are parsed from `PROJECT_URL` (via
@@ -134,7 +136,7 @@ Only the **org** and **project number** are parsed from `PROJECT_URL` (via
 By default Kamandar shows your PR buckets **account-wide**. Narrow them with
 `SCOPE` (env) or `--scope` (flag; the flag wins):
 
-| `SCOPE` | What PR buckets (#1, #2, #4, bonus) show |
+| `SCOPE` | What PR buckets (#1, #2, #5, bonus) show |
 |---|---|
 | `global` *(default)* | Every repo your account touches |
 | `org` or `org:NAME` | One org. Bare `org` reuses the org from `PROJECT_URL` |
@@ -215,7 +217,7 @@ Plain text grouped by bucket, no ANSI — safe to pipe to `mail`. Ideal for cron
 
 Renders **one self-contained HTML document** (inline CSS, no external/CDN
 resources, works offline over `file://`) to a stable path
-(`<tmpdir>/kamandar.html`) and opens it in your default browser. Bucket #4
+(`<tmpdir>/kamandar.html`) and opens it in your default browser. Bucket #5
 gets a warning accent and a "days since handoff" badge per card. Dark mode via
 `prefers-color-scheme`.
 
@@ -229,7 +231,7 @@ gets a warning accent and a "days since handoff" badge per card. Dark mode via
 
 ---
 
-## ⏳ Bucket #4 — the handoff-vs-reviewer race
+## ⏳ Bucket #5 — the handoff-vs-reviewer race
 
 Keying off `reviewDecision == REVIEW_REQUIRED` is **wrong**: after a reviewer
 requests changes and the author pushes fixes, `reviewDecision` stays
@@ -280,7 +282,7 @@ and fabricated fixtures — **zero network**.
 ```sh
 ruby test/test_kamandar.rb
 # ...
-# 78 passed, 0 failed
+# 79 passed, 0 failed
 ```
 
 ---

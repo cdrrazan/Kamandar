@@ -157,6 +157,18 @@ kept = E.assigned_not_started(items, login: "me",
 check "#3 project filter keeps mine+Todo and mine+Backlog",
       kept.map { |i| i["content"]["number"] }.sort, [1, 4]
 
+# in_review: issues assigned to me whose Status is in the review set
+review_items = [
+  item(login: "me", status: "In Review", number: 10),
+  item(login: "me", status: "In Progress", number: 11),
+  item(login: "other", status: "In Review", number: 12),
+  item(login: "me", status: "needs review", number: 13) # case-insensitive
+]
+in_rev = E.assigned_in_review(review_items, login: "me",
+                                            review_statuses: ["In Review", "Needs Review"])
+check "in_review keeps mine + review status (case-insensitive)",
+      in_rev.map { |i| i["content"]["number"] }.sort, [10, 13]
+
 # =============================================================================
 # Search query scoping
 # =============================================================================

@@ -24,7 +24,7 @@ No single-test runner — the suite is a hand-rolled harness (`check`/`ok` helpe
 Everything lives in one file: `lib/kamandar.rb`. Layers are Ruby modules, ordered **Engine → buckets → Surface**:
 
 - **`Engine`** — pure, side-effect-free: no network, no ENV, no I/O. Time math, GraphQL query *strings*, and all classification. Operates on **raw GraphQL node hashes (string keys)** so the same code classifies fixtures and live data. This is the unit-testable core.
-- **buckets** — a plain hash `Engine.classify` returns: `{reviews_owed, wip, assigned_not_started, stale, forgot_reviewer}`. `Engine::BUCKETS` is the ordered metadata (key, title, empty-message) both surfaces iterate.
+- **buckets** — a plain hash `Engine.classify` returns: `{reviews_owed, wip, assigned_not_started, in_review, stale, forgot_reviewer}`. `Engine::BUCKETS` is the ordered metadata (key, title, empty-message) both surfaces iterate.
 - **`Surface` / `TerminalSurface` / `BrowserSurface`** — consume buckets only; never re-query or re-classify. Contract is `render(buckets, ...) -> String` + `emit`. Adding email/menubar = new surface, **no engine change**.
 - **`GitHub`** — the *only* network layer (`Net::HTTP` → GraphQL). `Config` resolves ENV + CLI flags (flags win). `CLI` is the only place with side effects + ENV.
 
@@ -37,7 +37,7 @@ The whole file is guarded by `if __FILE__ == $PROGRAM_NAME` at the bottom, so `t
 - Tests are the **spec of record** (`test/test_kamandar.rb` header says so). Behavior changes should update tests alongside.
 - The browser surface renders **one self-contained HTML file** (inline CSS, no CDN/external assets, no `<script src>`, works over `file://`). Tests assert these properties (#13f–h) and that **no token ever reaches the HTML** (#14). Don't introduce external assets or pass secrets into `render`.
 
-## Bucket #4 (stale PRs) — the non-obvious logic
+## Bucket #5 (stale PRs) — the non-obvious logic
 
 Don't key staleness off `reviewDecision` — it stays `CHANGES_REQUESTED` after the author pushes fixes, dropping the PR you most want flagged. Instead a **timestamp race** decides who holds the ball:
 
