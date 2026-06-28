@@ -1,12 +1,13 @@
 <div align="center">
 
-# 🛰️ command_center
+# 🏹 Kamandar
 
-### Your GitHub work queue, on one screen.
+### Take aim at your GitHub work queue.
 
-A personal, **serverless** GitHub command center. One command shows what you
-owe, what you're building, what's assigned, and what's gone quiet —
-in your terminal or a self-contained browser page.
+***Kamandar*** (کمان‌دار) is Persian for *archer* — one who draws the bow and
+finds the target. A personal, **serverless** GitHub command center: one command
+shows what you owe, what you're building, what's assigned, and what's gone
+quiet — in your terminal or a self-contained browser page.
 
 <br>
 
@@ -22,7 +23,7 @@ in your terminal or a self-contained browser page.
 ---
 
 ```text
-Command center for @you  —  2026-06-22 09:14  (business days)
+Kamandar for @you  —  2026-06-22 09:14  (business days)
 ========================================================================
 
 📥 Reviews you owe (2)
@@ -62,23 +63,23 @@ Command center for @you  —  2026-06-22 09:14  (business days)
 > Requires **Ruby 3.2+**. No gems — standard library only.
 
 ```sh
-git clone https://github.com/cdrrazan/releaser.git
-cd releaser
+git clone https://github.com/cdrrazan/Kamandar.git
+cd Kamandar
 
 export GITHUB_TOKEN=ghp_xxx          # classic PAT: repo, read:org, read:project
 export GH_LOGIN=your-username
 export PROJECT_URL='https://github.com/orgs/YourOrg/projects/10/views/5'
 
-ruby lib/command_center.rb             # terminal output (default)
-ruby lib/command_center.rb --browser   # render + open a static HTML page
-ruby lib/command_center.rb -b --watch 60   # live tab, refreshed every 60s
+ruby lib/kamandar.rb             # terminal output (default)
+ruby lib/kamandar.rb --browser   # render + open a static HTML page
+ruby lib/kamandar.rb -b --watch 60   # live tab, refreshed every 60s
 ```
 
 Put it on your `PATH` if you like:
 
 ```sh
-chmod +x lib/command_center.rb
-ln -s "$PWD/lib/command_center.rb" ~/.local/bin/command_center
+chmod +x lib/kamandar.rb
+ln -s "$PWD/lib/kamandar.rb" ~/.local/bin/kamandar
 ```
 
 ---
@@ -86,11 +87,11 @@ ln -s "$PWD/lib/command_center.rb" ~/.local/bin/command_center
 ## 📂 Project layout
 
 ```text
-releaser/
+Kamandar/
 ├── lib/
-│   └── command_center.rb     # engine + both surfaces (single file, stdlib only)
+│   └── kamandar.rb     # engine + both surfaces (single file, stdlib only)
 ├── test/
-│   └── test_command_center.rb  # acceptance tests — zero network, 30 cases
+│   └── test_kamandar.rb  # acceptance tests — zero network, 30 cases
 ├── README.md
 ├── CONTRIBUTING.md
 ├── SECURITY.md
@@ -162,7 +163,7 @@ Plain text grouped by bucket, no ANSI — safe to pipe to `mail`. Ideal for cron
 
 Renders **one self-contained HTML document** (inline CSS, no external/CDN
 resources, works offline over `file://`) to a stable path
-(`<tmpdir>/command_center.html`) and opens it in your default browser. Bucket #4
+(`<tmpdir>/kamandar.html`) and opens it in your default browser. Bucket #4
 gets a warning accent and a "days since handoff" badge per card. Dark mode via
 `prefers-color-scheme`.
 
@@ -181,7 +182,7 @@ gets a warning accent and a "days since handoff" badge per card. Dark mode via
 Keying off `reviewDecision == REVIEW_REQUIRED` is **wrong**: after a reviewer
 requests changes and the author pushes fixes, `reviewDecision` stays
 `CHANGES_REQUESTED` until the reviewer re-reviews — so the PR you most want
-flagged gets dropped. command_center uses a **timestamp race** instead.
+flagged gets dropped. kamandar uses a **timestamp race** instead.
 
 ```mermaid
 flowchart TD
@@ -211,7 +212,7 @@ e.g. weekday mornings at 8:30, emailed to yourself:
 
 ```cron
 30 8 * * 1-5  GITHUB_TOKEN=... GH_LOGIN=you PROJECT_URL=... \
-              ruby /path/lib/command_center.rb | mail -s "Command center" you@example.com
+              ruby /path/lib/kamandar.rb | mail -s "Kamandar" you@example.com
 ```
 
 Swap `mail` for `notify-send` (Linux desktop) or `terminal-notifier` (macOS).
@@ -225,7 +226,7 @@ Every acceptance scenario is encoded with a fixed "today" (Monday 2026-06-22)
 and fabricated fixtures — **zero network**.
 
 ```sh
-ruby test/test_command_center.rb
+ruby test/test_kamandar.rb
 # ...
 # 30 passed, 0 failed
 ```

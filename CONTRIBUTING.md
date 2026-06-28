@@ -1,4 +1,4 @@
-# Contributing to command_center
+# Contributing to kamandar
 
 Thanks for your interest! This is a small, deliberately minimal personal tool.
 Contributions that keep it small, dependency-free, and well-tested are very
@@ -25,29 +25,29 @@ These constraints are the whole point of the project — please preserve them:
 ## Development setup
 
 ```sh
-git clone https://github.com/cdrrazan/releaser.git
-cd releaser
-ruby -c lib/command_center.rb   # syntax check
-ruby test/test_command_center.rb       # run the acceptance tests
+git clone https://github.com/cdrrazan/Kamandar.git
+cd Kamandar
+ruby -c lib/kamandar.rb   # syntax check
+ruby test/test_kamandar.rb       # run the acceptance tests
 ```
 
 ### Layout
 
 ```text
-lib/command_center.rb     # engine + both surfaces (single file)
-test/test_command_center.rb      # acceptance tests (zero network)
+lib/kamandar.rb     # engine + both surfaces (single file)
+test/test_kamandar.rb      # acceptance tests (zero network)
 ```
 
 No build step. No install step.
 
 ## Tests
 
-`test_command_center.rb` is the spec of record. It uses a fixed "today"
+`test_kamandar.rb` is the spec of record. It uses a fixed "today"
 (Monday 2026-06-22) and fabricated PR/item hashes, with `today:` and `mode:`
 injected for determinism — so it runs offline with no token.
 
 - Every change to engine behavior **must** come with a test.
-- Run `ruby test/test_command_center.rb` before opening a PR; it must print `0 failed`.
+- Run `ruby test/test_kamandar.rb` before opening a PR; it must print `0 failed`.
 - Prefer adding a focused fixture + `check`/`ok` assertion over reworking
   existing cases.
 
@@ -57,7 +57,7 @@ injected for determinism — so it runs offline with no token.
 2. Match the surrounding style: `# frozen_string_literal: true`, two-space
    indentation, `module_function` for stateless modules, descriptive method
    names ending in `?` for predicates.
-3. Keep the in-file README block (the header of `command_center.rb`) in sync with
+3. Keep the in-file README block (the header of `kamandar.rb`) in sync with
    any config/flag/behavior changes, and update `README.md` to match.
 4. Run the tests.
 
@@ -70,7 +70,7 @@ injected for determinism — so it runs offline with no token.
 ## Pull requests
 
 - Describe what changed and why, and note any new config or flags.
-- Confirm `ruby test/test_command_center.rb` passes.
+- Confirm `ruby test/test_kamandar.rb` passes.
 - Keep PRs focused — one logical change per PR.
 
 ## Reporting bugs
