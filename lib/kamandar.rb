@@ -2,10 +2,11 @@
 # frozen_string_literal: true
 
 # =============================================================================
-# command_center.rb — a personal GitHub command center (CLI)
+# kamandar.rb — a personal GitHub command center (CLI)
 # =============================================================================
 #
-# Prints one developer's current GitHub work queue in a single command.
+# Kamandar (Persian for "archer") prints one developer's current GitHub work
+# queue in a single command.
 # Personal tool, single user, GitHub-only, serverless. Stdlib only.
 #
 # -----------------------------------------------------------------------------
@@ -37,9 +38,9 @@
 #        export GH_LOGIN=your-username
 #        export PROJECT_URL='https://github.com/orgs/YourOrg/projects/10/views/5'
 #   3. Run:
-#        ruby lib/command_center.rb              # terminal output (default)
-#        ruby lib/command_center.rb --browser    # render + open a static HTML page
-#        ruby lib/command_center.rb -b --watch 60  # live tab, refreshed every 60s
+#        ruby lib/kamandar.rb              # terminal output (default)
+#        ruby lib/kamandar.rb --browser    # render + open a static HTML page
+#        ruby lib/kamandar.rb -b --watch 60  # live tab, refreshed every 60s
 #
 # -----------------------------------------------------------------------------
 # CONFIGURATION (CLI flags take precedence over env vars)
@@ -63,15 +64,15 @@
 # notifier. Examples (crontab, 8:30am Mon-Fri):
 #
 #   30 8 * * 1-5  GITHUB_TOKEN=... GH_LOGIN=you PROJECT_URL=... \
-#                 ruby /path/lib/command_center.rb | mail -s "Command center" you@example.com
+#                 ruby /path/lib/kamandar.rb | mail -s "Kamandar" you@example.com
 #
 #   # or, on a Linux desktop:
-#   30 8 * * 1-5  ... ruby /path/lib/command_center.rb | head -c 4000 | \
-#                 xargs -0 notify-send "Command center"
+#   30 8 * * 1-5  ... ruby /path/lib/kamandar.rb | head -c 4000 | \
+#                 xargs -0 notify-send "Kamandar"
 #
 #   # or, on macOS:
-#   30 8 * * 1-5  ... ruby /path/lib/command_center.rb | \
-#                 terminal-notifier -title "Command center"
+#   30 8 * * 1-5  ... ruby /path/lib/kamandar.rb | \
+#                 terminal-notifier -title "Kamandar"
 #
 # Terminal output is plain text (no ANSI), safe to pipe to `mail`. Browser mode
 # is for interactive/ambient use (optionally with --watch), not cron.
@@ -104,10 +105,10 @@ require "time"
 require "tmpdir"
 require "rbconfig"
 
-module CommandCenter
+module Kamandar
   VERSION = "1.0.0"
   GRAPHQL_ENDPOINT = "https://api.github.com/graphql"
-  HTML_PATH = File.join(Dir.tmpdir, "command_center.html")
+  HTML_PATH = File.join(Dir.tmpdir, "kamandar.html")
 
   # ---------------------------------------------------------------------------
   # Engine — pure, side-effect-free. No network, no ENV, no I/O.
@@ -513,7 +514,7 @@ module CommandCenter
 
     def render(buckets, config:, generated_at:)
       lines = []
-      lines << "Command center for @#{config[:login]}  —  #{generated_at.strftime('%Y-%m-%d %H:%M')}  (#{config[:day_mode]} days)"
+      lines << "Kamandar for @#{config[:login]}  —  #{generated_at.strftime('%Y-%m-%d %H:%M')}  (#{config[:day_mode]} days)"
       lines << ("=" * 72)
 
       Engine::BUCKETS.each do |key, title, empty|
@@ -596,12 +597,12 @@ module CommandCenter
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         #{refresh}
-        <title>Command center — @#{escape(config[:login])}</title>
+        <title>Kamandar — @#{escape(config[:login])}</title>
         <style>#{css}</style>
         </head>
         <body>
         <header>
-          <h1>Command center</h1>
+          <h1>Kamandar</h1>
           <p class="meta">@#{escape(config[:login])} &middot; #{escape(generated_at.strftime('%Y-%m-%d %H:%M'))} &middot; #{escape(config[:day_mode])} days#{watch_seconds.to_i > 0 ? " &middot; live (#{watch_seconds.to_i}s)" : ""}</p>
         </header>
         <main>
@@ -676,7 +677,7 @@ module CommandCenter
       cmd = Surface.browser_open_command(host_os, arg)
       system(*cmd)
     rescue StandardError => e
-      $stderr.puts "command_center: could not open browser (#{e.message}); page at #{path}"
+      $stderr.puts "kamandar: could not open browser (#{e.message}); page at #{path}"
     end
   end
 
@@ -693,7 +694,7 @@ module CommandCenter
       req = Net::HTTP::Post.new(uri)
       req["Authorization"] = "Bearer #{token}"
       req["Content-Type"] = "application/json"
-      req["User-Agent"] = "command_center/#{VERSION}"
+      req["User-Agent"] = "kamandar/#{VERSION}"
       req.body = JSON.generate(query: query, variables: variables)
 
       res = http.request(req)
@@ -823,7 +824,7 @@ module CommandCenter
                                               generated_at: Time.now,
                                               watch_seconds: 0)
         path = BrowserSurface.emit(html)
-        $stderr.puts "command_center: wrote #{path}"
+        $stderr.puts "kamandar: wrote #{path}"
         warn_no_project(config)
       else
         buckets = fetch_and_classify(config)
@@ -841,12 +842,12 @@ module CommandCenter
                                               generated_at: Time.now,
                                               watch_seconds: config[:watch_seconds])
         path = BrowserSurface.emit(html, open: first)
-        $stderr.puts "command_center: refreshed #{path} (#{Time.now.strftime('%H:%M:%S')})"
+        $stderr.puts "kamandar: refreshed #{path} (#{Time.now.strftime('%H:%M:%S')})"
         first = false
         sleep config[:watch_seconds]
       end
     rescue Interrupt
-      $stderr.puts "\ncommand_center: watch stopped."
+      $stderr.puts "\nkamandar: watch stopped."
     end
 
     # Fetch everything, then classify once. The buckets feed whichever surface.
@@ -880,19 +881,19 @@ module CommandCenter
       missing << "GITHUB_TOKEN" unless config[:token] && !config[:token].empty?
       missing << "GH_LOGIN" unless config[:login] && !config[:login].empty?
       return if missing.empty?
-      $stderr.puts "command_center: missing required configuration: #{missing.join(', ')}"
+      $stderr.puts "kamandar: missing required configuration: #{missing.join(', ')}"
       $stderr.puts "See the header of this file for setup instructions."
       exit 1
     end
 
     def warn_no_project(config)
       return if config[:project_url] && !config[:project_url].empty?
-      $stderr.puts "command_center: PROJECT_URL unset — 'Assigned, not started' will be empty."
+      $stderr.puts "kamandar: PROJECT_URL unset — 'Assigned, not started' will be empty."
     end
   end
 end
 
 # Guard: tests can `require` this file without running or reading ENV.
 if __FILE__ == $PROGRAM_NAME
-  CommandCenter::CLI.run
+  Kamandar::CLI.run
 end

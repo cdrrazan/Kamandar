@@ -2,22 +2,22 @@
 # frozen_string_literal: true
 
 # =============================================================================
-# test_command_center.rb — acceptance tests for command_center.rb (spec of record)
+# test_kamandar.rb — acceptance tests for kamandar.rb (spec of record)
 #
 # Zero network. Fixed "today" = Monday 2026-06-22. Fabricated PR/item hashes.
 # `today:` and `mode:` are injected for determinism.
 #
-# Run:  ruby test/test_command_center.rb
+# Run:  ruby test/test_kamandar.rb
 # =============================================================================
 
-require_relative "../lib/command_center"
+require_relative "../lib/kamandar"
 require "date"
 require "time"
 
-E = CommandCenter::Engine
-S = CommandCenter::Surface
-B = CommandCenter::BrowserSurface
-T = CommandCenter::TerminalSurface
+E = Kamandar::Engine
+S = Kamandar::Surface
+B = Kamandar::BrowserSurface
+T = Kamandar::TerminalSurface
 
 TODAY = Time.utc(2026, 6, 22, 12, 0, 0) # Monday
 
@@ -199,7 +199,7 @@ ok "#13a starts with <!DOCTYPE html>", html.start_with?("<!DOCTYPE html>")
 ok "#13b contains item number 101", html.include?("#101")
 ok "#13c contains item title 'Gone quiet'", html.include?("Gone quiet")
 ok "#13d contains item url 201", html.include?("https://github.com/o/r/pull/201")
-ok "#13e contains all bucket headings", CommandCenter::Engine::BUCKETS.all? { |_, title, _| html.include?(title) }
+ok "#13e contains all bucket headings", Kamandar::Engine::BUCKETS.all? { |_, title, _| html.include?(title) }
 ok "#13f no external <link> asset", !html.include?("<link")
 ok "#13g no external <script src=> asset", !(html =~ /<script\b[^>]*\bsrc=/)
 ok "#13h no http(s) asset in style block",
