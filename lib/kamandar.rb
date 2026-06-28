@@ -58,6 +58,9 @@
 #                                       repo:owner/name   one repo
 #                                       project           repos on the PROJECT_URL
 #                                                         board (needs PROJECT_URL)
+#                                     If unset and run in an interactive terminal,
+#                                     you're prompted to pick a mode (Enter =
+#                                     global). Skipped for pipes/cron/browser.
 #   NOT_STARTED_STATUSES  (Todo,Backlog,No Status)  case-insensitive status set
 #   ITERATION_FILTER      (off)       `current` restricts #3 to the active sprint
 #   ITERATION_FIELD       (Iteration) board's iteration field name
@@ -928,12 +931,14 @@ module Kamandar
       project_url = env["PROJECT_URL"]
       project_org = (Engine.parse_project_url(project_url) || {})[:org]
       scope_raw = flags[:scope] || env["SCOPE"] || "global"
+      scope_given = !!(flags[:scope] || (env["SCOPE"] && !env["SCOPE"].strip.empty?))
 
       {
         token: env["GITHUB_TOKEN"],
         login: env["GH_LOGIN"],
         project_url: project_url,
         scope: Engine.parse_scope(scope_raw, project_org: project_org),
+        scope_given: scope_given,
         not_started: not_started,
         iteration_filter: (env["ITERATION_FILTER"] || "off"),
         iteration_field: (env["ITERATION_FIELD"] || "Iteration"),
@@ -986,6 +991,12 @@ module Kamandar
         browser_flag: config[:browser_flag]
       )
 
+      # Terminal + interactive + no scope given: let the user pick one. Browser,
+      # cron, and pipes are skipped so nothing ever blocks on stdin.
+      if surface == :terminal && !config[:scope_given] && $stdin.tty?
+        config = config.merge(scope: prompt_scope(config))
+      end
+
       if surface == :browser && config[:watch_seconds].to_i > 0
         run_watch(config)
       elsif surface == :browser
@@ -1026,6 +1037,38 @@ module Kamandar
       end
     rescue Interrupt
       $stderr.puts "\nkamandar: watch stopped."
+    end
+
+    # Interactive scope picker. The user SELECTS a mode by number (they never
+    # type the mode itself) and only enters a name for org/repo. Prompts go to
+    # stderr so a piped report on stdout stays clean. Anything blank/invalid —
+    # or project with no PROJECT_URL — resolves to global. Returns a scope hash.
+    def prompt_scope(config, input: $stdin, out: $stderr)
+      out.puts "Scope for PR buckets:"
+      out.puts "  1) global   — account-wide (default)"
+      out.puts "  2) org      — a single organization"
+      out.puts "  3) repo     — a single repository"
+      out.puts "  4) project  — repos on your PROJECT_URL board"
+      out.print "Select 1-4 (Enter = global): "
+      case (input.gets || "").strip
+      when "2"
+        out.print "Org name: "
+        name = (input.gets || "").strip
+        name.empty? ? { mode: "global" } : { mode: "org", org: name }
+      when "3"
+        out.print "Repo (owner/name): "
+        name = (input.gets || "").strip
+        name.empty? ? { mode: "global" } : { mode: "repo", repo: name }
+      when "4"
+        if config[:project_url].to_s.strip.empty?
+          out.puts "kamandar: project scope needs PROJECT_URL — using global."
+          { mode: "global" }
+        else
+          { mode: "project" }
+        end
+      else
+        { mode: "global" }
+      end
     end
 
     # Run `block` while animating a spinner on stderr. Only animates on an
