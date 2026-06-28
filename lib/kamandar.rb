@@ -630,6 +630,16 @@ module Kamandar
   module BrowserSurface
     module_function
 
+    # Per-bucket icon + accent color, keyed by bucket key. `var(--warn)` lets the
+    # stale bucket track the warning color across light/dark themes.
+    BUCKET_META = {
+      reviews_owed:         { icon: "\u{1F4E5}", color: "#0969da" }, # 📥
+      wip:                  { icon: "\u{1F528}", color: "#8250df" }, # 🔨
+      assigned_not_started: { icon: "\u{1F4CB}", color: "#1a7f37" }, # 📋
+      stale:                { icon: "\u{23F3}",  color: "var(--warn)" }, # ⏳
+      forgot_reviewer:      { icon: "\u{1F648}", color: "#9a6700" }  # 🙈
+    }.freeze
+
     def escape(text)
       text.to_s
           .gsub("&", "&amp;")
@@ -641,7 +651,7 @@ module Kamandar
 
     # Render a single self-contained HTML document. SECURITY: receives only
     # already-fetched display data — never a token or any secret. Inline CSS,
-    # no external/CDN assets, works offline over file://.
+    # no external/CDN assets, no JS, works offline over file://.
     def render(buckets, config:, generated_at:, watch_seconds: 0)
       refresh =
         if watch_seconds.to_i > 0
@@ -650,22 +660,36 @@ module Kamandar
           ""
         end
 
+      total = Engine::BUCKETS.sum { |key, _, _| (buckets[key] || []).size }
+
       sections = Engine::BUCKETS.map do |key, title, empty|
         rows = buckets[key] || []
-        warn_class = key == :stale ? " warn" : ""
-        cards =
+        meta = BUCKET_META[key] || { icon: "•", color: "var(--accent)" }
+        classes = +"bucket"
+        classes << " warn" if key == :stale
+        classes << " is-empty" if rows.empty?
+        body =
           if rows.empty?
             %(<p class="empty">#{escape(empty)}</p>)
           else
             rows.map { |row| card(row, key) }.join("\n")
           end
         <<~SECTION
-          <section class="bucket#{warn_class}">
-            <h2>#{escape(title)} <span class="count">#{rows.size}</span></h2>
-            #{cards}
+          <section class="#{classes}" style="--c:#{meta[:color]}">
+            <h2><span class="icon">#{meta[:icon]}</span> <span class="htitle">#{escape(title)}</span> <span class="count">#{rows.size}</span></h2>
+            #{body}
           </section>
         SECTION
       end.join("\n")
+
+      chips = [
+        %(<span class="chip total">#{total} open</span>),
+        %(<span class="chip">@#{escape(config[:login])}</span>),
+        %(<span class="chip">#{escape(generated_at.strftime('%Y-%m-%d %H:%M'))}</span>),
+        %(<span class="chip">#{escape(config[:day_mode])} days</span>),
+        (config[:scope] ? %(<span class="chip">#{escape(Engine.scope_label(config[:scope]))}</span>) : nil),
+        (watch_seconds.to_i > 0 ? %(<span class="chip live">live #{watch_seconds.to_i}s</span>) : nil)
+      ].compact.join("\n      ")
 
       <<~HTML
         <!DOCTYPE html>
@@ -679,8 +703,12 @@ module Kamandar
         </head>
         <body>
         <header>
-          <h1>Kamandar</h1>
-          <p class="meta">@#{escape(config[:login])} &middot; #{escape(generated_at.strftime('%Y-%m-%d %H:%M'))} &middot; #{escape(config[:day_mode])} days#{config[:scope] ? " &middot; #{escape(Engine.scope_label(config[:scope]))}" : ""}#{watch_seconds.to_i > 0 ? " &middot; live (#{watch_seconds.to_i}s)" : ""}</p>
+          <div class="wrap">
+            <h1><span class="bow">\u{1F3F9}</span> Kamandar</h1>
+            <div class="meta">
+              #{chips}
+            </div>
+          </div>
         </header>
         <main>
         #{sections}
@@ -698,9 +726,10 @@ module Kamandar
           ""
         end
       <<~CARD
-        <a class="card" href="#{escape(row[:url])}" target="_blank" rel="noopener">
+        <a class="card" href="#{escape(row[:url])}" target="_blank" rel="noopener" title="#{escape(row[:title])}">
           <span class="num">##{escape(row[:number])}</span>
           <span class="title">#{escape(row[:title])}</span>
+          <span class="spacer"></span>
           <span class="repo">#{escape(row[:repo])}</span>
           #{badge}
         </a>
@@ -709,27 +738,36 @@ module Kamandar
 
     def css
       <<~CSS
-        :root{--bg:#f6f8fa;--fg:#1f2328;--muted:#656d76;--card:#fff;--border:#d0d7de;--accent:#0969da;--warn:#bc4c00;--warnbg:#fff8f0}
-        @media (prefers-color-scheme: dark){:root{--bg:#0d1117;--fg:#e6edf3;--muted:#8b949e;--card:#161b22;--border:#30363d;--accent:#58a6ff;--warn:#db6d28;--warnbg:#1f1206}}
+        :root{--bg:#f6f8fa;--fg:#1f2328;--muted:#656d76;--card:#fff;--border:#d0d7de;--accent:#0969da;--warn:#bc4c00;--warnbg:#fff8f0;--shadow:0 1px 2px rgba(0,0,0,.06),0 1px 6px rgba(0,0,0,.04)}
+        @media (prefers-color-scheme: dark){:root{--bg:#0d1117;--fg:#e6edf3;--muted:#8b949e;--card:#161b22;--border:#30363d;--accent:#58a6ff;--warn:#db6d28;--warnbg:#1f1206;--shadow:0 1px 2px rgba(0,0,0,.4),0 1px 8px rgba(0,0,0,.3)}}
         *{box-sizing:border-box}
-        body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;background:var(--bg);color:var(--fg);line-height:1.4}
-        header{padding:24px 20px 8px}
-        h1{margin:0;font-size:1.6rem}
-        .meta{margin:4px 0 0;color:var(--muted);font-size:.9rem}
-        main{max-width:880px;margin:0 auto;padding:8px 16px 48px}
-        .bucket{margin:24px 0}
-        h2{font-size:1.1rem;border-bottom:1px solid var(--border);padding-bottom:6px;display:flex;align-items:center;gap:8px}
-        .count{background:var(--border);color:var(--fg);border-radius:999px;font-size:.8rem;padding:1px 9px;font-weight:600}
-        .bucket.warn h2{color:var(--warn)}
-        .bucket.warn .count{background:var(--warn);color:#fff}
-        .empty{color:var(--muted);font-style:italic;margin:8px 0}
-        .card{display:flex;flex-wrap:wrap;align-items:baseline;gap:8px;text-decoration:none;color:inherit;background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin:8px 0}
-        .card:hover{border-color:var(--accent)}
-        .bucket.warn .card{background:var(--warnbg);border-color:var(--warn)}
-        .num{color:var(--muted);font-variant-numeric:tabular-nums;font-weight:600}
-        .title{font-weight:600;flex:1 1 auto;min-width:200px}
-        .repo{color:var(--muted);font-size:.85rem}
-        .badge{background:var(--warn);color:#fff;border-radius:6px;font-size:.75rem;padding:2px 8px;white-space:nowrap}
+        body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;background:var(--bg);color:var(--fg);line-height:1.45;-webkit-font-smoothing:antialiased}
+        header{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--border)}
+        .wrap{max-width:880px;margin:0 auto;padding:18px 16px 14px}
+        h1{margin:0;font-size:1.5rem;display:flex;align-items:center;gap:9px;letter-spacing:-.01em}
+        .bow{font-size:1.35rem}
+        .meta{margin:11px 0 0;display:flex;flex-wrap:wrap;gap:6px}
+        .chip{background:var(--card);border:1px solid var(--border);color:var(--muted);border-radius:999px;font-size:.78rem;padding:3px 10px;font-weight:500;white-space:nowrap}
+        .chip.total{border-color:var(--accent);color:var(--accent);font-weight:700}
+        .chip.live{border-color:var(--warn);color:var(--warn);font-weight:600}
+        main{max-width:880px;margin:0 auto;padding:20px 16px 56px}
+        .bucket{margin:22px 0}
+        .bucket.is-empty{opacity:.55}
+        h2{font-size:1.05rem;margin:0 0 10px;display:flex;align-items:center;gap:9px;border-bottom:1px solid var(--border);padding-bottom:8px}
+        .icon{font-size:1.05rem;line-height:1;filter:saturate(1.1)}
+        .htitle{font-weight:700}
+        .count{margin-left:1px;background:var(--c);color:#fff;border-radius:999px;font-size:.74rem;line-height:1.5;padding:0 9px;font-weight:700;min-width:22px;text-align:center}
+        .is-empty .count{background:var(--border);color:var(--muted)}
+        .empty{color:var(--muted);font-style:italic;margin:6px 2px}
+        .card{display:flex;align-items:center;gap:12px;text-decoration:none;color:inherit;background:var(--card);border:1px solid var(--border);border-left:3px solid var(--c);border-radius:10px;padding:13px 15px;margin:9px 0;box-shadow:var(--shadow);transition:transform .08s ease,border-color .08s ease,box-shadow .08s ease}
+        .card:hover{transform:translateY(-1px);border-color:var(--c);box-shadow:0 2px 4px rgba(0,0,0,.08),0 4px 14px rgba(0,0,0,.06)}
+        .spacer{flex:1 1 auto}
+        .num{color:var(--muted);font:600 .85rem/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums;flex:none}
+        .title{font-weight:600;flex:0 1 auto;min-width:0}
+        .repo{color:var(--muted);font-size:.78rem;background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:2px 8px;white-space:nowrap;flex:none}
+        .badge{background:var(--warn);color:#fff;border-radius:6px;font-size:.72rem;padding:3px 9px;white-space:nowrap;font-weight:600;flex:none}
+        .bucket.warn .card{background:var(--warnbg)}
+        @media (max-width:560px){.card{flex-wrap:wrap;gap:8px}.spacer{display:none}.repo{order:3}}
       CSS
     end
 
