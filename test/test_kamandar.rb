@@ -480,6 +480,14 @@ ok "terminal color content survives stripping (number+title)", stripped.include?
 ok "terminal color content survives stripping (repo)", stripped.include?("(o/r)")
 ok "terminal color shows a bucket emoji", term_color.include?("\u{1F4E5}")
 
+# matrix theme: green boxed panels
+term_matrix = T.render(buckets, config: config, generated_at: TODAY, theme: :matrix)
+ok "matrix theme draws box borders", term_matrix.include?("╔") && term_matrix.include?("╚")
+ok "matrix theme uses bright green", term_matrix.include?("\e[1;92m")
+ok "matrix theme keeps content (after stripping)",
+   term_matrix.gsub(/\e\[[0-9;]*m/, "").include?("#101 Review me")
+ok "matrix theme upcases bucket titles", term_matrix.include?("REVIEWS YOU OWE")
+
 # =============================================================================
 # Issue+PR scope (global/org/repo): assigned issues classified by linked PR
 # =============================================================================

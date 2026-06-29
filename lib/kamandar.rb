@@ -89,6 +89,8 @@
 #   ITERATION_FIELD       (Iteration) board's iteration field name
 #   STALE_DAYS            (2)         threshold for bucket #7
 #   DAY_MODE              (business)  business (skip Sat/Sun) | calendar
+#   THEME / --theme       (—)         `matrix` = green boxed TUI (terminal/TTY
+#                                     only; pipes stay plain)
 #
 # -----------------------------------------------------------------------------
 # PUSH LAYER (terminal mode) — no scheduler code lives in this tool.
@@ -853,9 +855,12 @@ module Kamandar
     }.freeze
 
     # Render the report. `color: true` adds ANSI escapes + emoji; `false`
-    # produces the exact plain text (pipe/cron/mail safe). Plain output is the
-    # spec the tests assert, so keep the no-color branch byte-for-byte stable.
-    def render(buckets, config:, generated_at:, color: false)
+    # produces the exact plain text (pipe/cron/mail safe). `theme: :matrix`
+    # draws green-on-black boxed panels (TTY only). Plain output is the spec the
+    # tests assert, so keep the no-color branch byte-for-byte stable.
+    def render(buckets, config:, generated_at:, color: false, theme: :default)
+      return matrix_render(buckets, config: config, generated_at: generated_at) if theme == :matrix
+
       paint = lambda do |codes, str|
         color && codes ? "\e[#{codes}m#{str}\e[0m" : str
       end
@@ -909,6 +914,62 @@ module Kamandar
     # The terminal surface's emit contract: print to stdout.
     def emit(output)
       $stdout.puts(output)
+    end
+
+    # -- Matrix theme ---------------------------------------------------------
+
+    MATRIX_W = 72 # inner content width of every panel
+
+    # Truncate (char-count) to width, adding an ellipsis when clipped.
+    def mtrunc(str, width)
+      s = str.to_s
+      s.length <= width ? s : "#{s[0, width - 1]}…"
+    end
+
+    # Truncate then right-pad with spaces to exactly `width` chars.
+    def mpad(str, width)
+      t = mtrunc(str, width)
+      t + (" " * (width - t.length))
+    end
+
+    # Green-on-black boxed dashboard. All ANSI + box-drawing, no gems. Three
+    # green shades: bright (borders/labels), green (content), dim (urls/empty).
+    def matrix_render(buckets, config:, generated_at:)
+      w  = MATRIX_W
+      br = ->(s) { "\e[1;92m#{s}\e[0m" } # bright green
+      gr = ->(s) { "\e[32m#{s}\e[0m" }   # green
+      dm = ->(s) { "\e[2;32m#{s}\e[0m" } # dim green
+      framed = ->(body, fn) { br.call("║ ") + fn.call(mpad(body, w)) + br.call(" ║") }
+
+      meta = "@#{config[:login]}  #{generated_at.strftime('%Y-%m-%d %H:%M')}  (#{config[:day_mode]} days)"
+      meta += "  [#{Engine.scope_label(config[:scope])}]" if config[:scope]
+
+      lines = []
+      lines << br.call("╔" + ("═" * (w + 2)) + "╗")
+      lines << framed.call("KAMANDAR  //  #{meta}", gr)
+      lines << br.call("╚" + ("═" * (w + 2)) + "╝")
+
+      Engine.bucket_meta(Engine.scope_mode(config)).each do |key, title, empty|
+        rows = buckets[key] || []
+        left  = "╔═ #{title.upcase} "
+        right = " #{rows.size} ═╗"
+        fill  = [(w + 4) - left.length - right.length, 0].max
+
+        lines << ""
+        lines << br.call(left + ("═" * fill) + right)
+        if rows.empty?
+          lines << framed.call(empty, dm)
+        else
+          rows.each do |row|
+            tag = (key == :stale && row[:days]) ? "  · #{row[:days]}#{row[:mode] == 'business' ? 'bd' : 'd'}" : ""
+            lines << framed.call("##{row[:number]} #{row[:title]}  (#{row[:repo]})#{tag}", gr)
+            lines << framed.call("  #{row[:url]}", dm)
+          end
+        end
+        lines << br.call("╚" + ("═" * (w + 2)) + "╝")
+      end
+      lines << ""
+      lines.join("\n")
     end
   end
 
@@ -1262,6 +1323,7 @@ module Kamandar
         day_mode: (env["DAY_MODE"] || "business"),
         output_env: (env["OUTPUT"] || "terminal"),
         browser_flag: flags[:browser],
+        theme: (flags[:theme] || env["THEME"] || "").to_s.strip.downcase,
         list_statuses: flags[:statuses] || false,
         watch_seconds: flags.key?(:watch) ? flags[:watch] : (env["WATCH_SECONDS"] || "0").to_i
       }
@@ -1286,6 +1348,11 @@ module Kamandar
           flags[:scope] = Regexp.last_match(1)
         when "--statuses"
           flags[:statuses] = true
+        when "--theme"
+          flags[:theme] = argv[i + 1]
+          i += 1
+        when /\A--theme=(.+)\z/
+          flags[:theme] = Regexp.last_match(1)
         end
         i += 1
       end
@@ -1333,8 +1400,9 @@ module Kamandar
         warn_if_empty(config, buckets)
       else
         buckets = with_spinner("Fetching your GitHub queue…") { fetch_and_classify(config) }
+        theme = (config[:theme] == "matrix" && $stdout.tty?) ? :matrix : :default
         output = TerminalSurface.render(buckets, config: config, generated_at: Time.now,
-                                                 color: $stdout.tty?)
+                                                 color: $stdout.tty?, theme: theme)
         TerminalSurface.emit(output)
         warn_no_project(config)
         warn_if_empty(config, buckets)

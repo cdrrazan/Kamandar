@@ -13,7 +13,7 @@ quiet — in your terminal or a self-contained browser page.
 
 ![Ruby](https://img.shields.io/badge/Ruby-3.2%2B-CC342D?logo=ruby&logoColor=white)
 ![Dependencies](https://img.shields.io/badge/dependencies-stdlib%20only-2ea44f)
-![Tests](https://img.shields.io/badge/tests-125%20passing-2ea44f)
+![Tests](https://img.shields.io/badge/tests-129%20passing-2ea44f)
 ![Serverless](https://img.shields.io/badge/serverless-no%20server%20·%20no%20DB%20·%20no%20OAuth-0969da)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![PRs welcome](https://img.shields.io/badge/PRs-welcome-ff69b4)
@@ -114,7 +114,7 @@ Kamandar/
 ├── lib/
 │   └── kamandar.rb     # engine + both surfaces (single file, stdlib only)
 ├── test/
-│   └── test_kamandar.rb  # acceptance tests — zero network, 125 cases
+│   └── test_kamandar.rb  # acceptance tests — zero network, 129 cases
 ├── README.md
 ├── CONTRIBUTING.md
 ├── SECURITY.md
@@ -144,6 +144,7 @@ Kamandar/
 | `ITERATION_FIELD` | | `Iteration` | Board's iteration field name |
 | `STALE_DAYS` | | `2` | Threshold (in days) for bucket #7 |
 | `DAY_MODE` | | `business` | `business` (skip Sat/Sun) or `calendar` |
+| `THEME` / `--theme` | | — | `matrix` renders a green-on-black boxed TUI (terminal only; pipes stay plain) |
 
 Only the **org** and **project number** are parsed from `PROJECT_URL` (via
 `/orgs/<org>/projects/<num>`); the saved-view number is ignored — see
@@ -245,6 +246,10 @@ Grouped by bucket with per-bucket emoji and color **when stdout is a terminal**.
 Piped or redirected (cron, `| mail`), it automatically falls back to plain text
 with no ANSI — so captured output stays clean.
 
+Prefer a retro look? `THEME=matrix ruby lib/kamandar.rb` (or `--theme matrix`)
+draws a green-on-black boxed dashboard. It's TTY-only — piped output is still
+plain text.
+
 ### Browser (serverless)
 
 Renders **one self-contained HTML document** (inline CSS, no external/CDN
@@ -314,7 +319,7 @@ and fabricated fixtures — **zero network**.
 ```sh
 ruby test/test_kamandar.rb
 # ...
-# 125 passed, 0 failed
+# 129 passed, 0 failed
 ```
 
 ---
