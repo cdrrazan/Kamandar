@@ -15,6 +15,7 @@ ruby lib/kamandar.rb --serve        # live web app on http://127.0.0.1:4567 (--p
 ruby lib/kamandar.rb --dashboard    # full-screen Matrix TUI (rain splash; r=refresh, q=quit)
 ruby lib/kamandar.rb --browser      # render + open static HTML page
 ruby lib/kamandar.rb -b --watch 60  # live browser tab, re-fetch every 60s
+ruby lib/kamandar.rb --serve --demo # fabricated data (no token) — screenshots/offline trials
 ```
 
 Required env to actually run (not needed for tests): `GITHUB_TOKEN` (classic PAT: `repo, read:org, read:project`), `GH_LOGIN`. Optional: `PROJECT_URL` (enables bucket #3), `STALE_DAYS`, `DAY_MODE`, `NOT_STARTED_STATUSES`, `ITERATION_FILTER`, `ITERATION_FIELD`. See the README config table or the header comment in `lib/kamandar.rb`.
@@ -29,6 +30,7 @@ Everything lives in one file: `lib/kamandar.rb`. Layers are Ruby modules, ordere
 - **buckets** — a plain hash `Engine.classify` returns. **The bucket set depends on scope** (`config[:scope][:mode]`): `project` is board-driven (`classify_project` → `{reviews_owed, wip, assigned_not_started, in_review, in_qa, blocked, stale, forgot_reviewer}`); every other scope is issue+PR driven (`classify_issue` → `{reviews_owed, assigned_todo, assigned_wip, assigned_review, assigned_no_reviewer, stale}`, classified by each assigned issue's linked-PR state via `issue_pr_state`). `Engine.bucket_meta(mode)` returns the ordered metadata for that mode (`BUCKETS_PROJECT` / `BUCKETS_ISSUE`); both surfaces iterate it. `Engine::BUCKETS` aliases the project set.
 - **`Surface` / `TerminalSurface` / `DashboardSurface` / `BrowserSurface` / `ServerSurface`** — consume buckets only; never re-query or re-classify. Contract is `render`/`page(buckets, ...) -> String` + `emit`. Adding email/menubar = new surface, **no engine change**. `ServerSurface` reuses `BrowserSurface`'s `css`/`card`/`sections_html` and adds an in-page scope control bar.
 - **`GitHub`** — the *only* outbound network layer (`Net::HTTP` → GraphQL). **`Server`** is the *only* inbound one: a minimal stdlib `TCPServer` HTTP/1.1 loop for `--serve`, bound to `127.0.0.1`. Its pure helpers (`parse_request`, `http_response`, `resolve_scope`) are unit-tested; the accept loop lives in `CLI.run_server`. `Config` resolves ENV + CLI flags (flags win). `CLI` is the only place with side effects + ENV.
+- **`Demo`** — pure, deterministic fake-data generator (`Demo.buckets(mode)`): 15–20 rows/bucket shaped exactly like `Engine.classify` output. `--demo` short-circuits `fetch_and_classify` (and skips `validate!`), so any surface renders offline with no token — used for screenshots. `ServerSurface` paginates panels at `PAGE_SIZE` (8) cards/page via a CSS-only pager (`paginated_body` + generated `pager_css`, hidden radio per page; no JS).
 
 The whole file is guarded by `if __FILE__ == $PROGRAM_NAME` at the bottom, so `test/` can `require` it without running or reading ENV.
 

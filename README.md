@@ -15,10 +15,16 @@ the opt-in `--serve`, bound to localhost.
 
 ![Ruby](https://img.shields.io/badge/Ruby-3.2%2B-CC342D?logo=ruby&logoColor=white)
 ![Dependencies](https://img.shields.io/badge/dependencies-stdlib%20only-2ea44f)
-![Tests](https://img.shields.io/badge/tests-209%20passing-2ea44f)
+![Tests](https://img.shields.io/badge/tests-225%20passing-2ea44f)
 ![Serverless](https://img.shields.io/badge/serverless-no%20server%20·%20no%20DB%20·%20no%20OAuth-0969da)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![PRs welcome](https://img.shields.io/badge/PRs-welcome-ff69b4)
+
+<br>
+
+![Kamandar live web app (--serve)](dashboard.png)
+
+<sub>The live web app (`ruby lib/kamandar.rb --serve`). Pure HTML + CSS — sidebar tabs, two work boxes, and pagination, no JavaScript. Screenshot rendered with `--demo`.</sub>
 
 </div>
 
@@ -101,7 +107,12 @@ ruby lib/kamandar.rb --serve     # live web app at http://127.0.0.1:4567
 ruby lib/kamandar.rb --dashboard # full-screen Matrix TUI (digital-rain splash)
 ruby lib/kamandar.rb --browser   # render + open a static HTML page
 ruby lib/kamandar.rb -b --watch 60   # live tab, refreshed every 60s
+ruby lib/kamandar.rb --serve --demo  # fake data, no token — for screenshots/trials
 ```
+
+> **`--demo`** fabricates 15–20 plausible rows per bucket and skips the network
+> entirely (no token or login needed) — handy for screenshots, demos, or trying a
+> surface offline. It works with any surface (`--serve`, `--browser`, terminal).
 
 > **`--serve`** is the graphical app: a localhost-only web page with a sidebar +
 > tabbed buckets, in-page scope switching, a refresh button, and optional
@@ -130,7 +141,7 @@ Kamandar/
 ├── lib/
 │   └── kamandar.rb     # engine + all surfaces + local server (single file, stdlib only)
 ├── test/
-│   └── test_kamandar.rb  # acceptance tests — zero network, 209 cases
+│   └── test_kamandar.rb  # acceptance tests — zero network, 225 cases
 ├── README.md
 ├── CONTRIBUTING.md
 ├── SECURITY.md
@@ -164,6 +175,7 @@ Kamandar/
 | `--dashboard` | | off | Full-screen Matrix TUI: digital-rain splash, then live panels (`r` refresh, `q` quit). Needs an interactive TTY; falls back to plain output otherwise |
 | `--serve` | | off | Live web app: localhost-only HTTP server with in-page scope controls + refresh. Token never reaches the page |
 | `--port N` / `PORT` | | `4567` | Port for `--serve` (bound to `127.0.0.1` only) |
+| `--demo` | | off | Render fabricated data (15–20 rows/bucket) with no network or token — for screenshots and offline trials |
 
 Only the **org** and **project number** are parsed from `PROJECT_URL` (via
 `/orgs/<org>/projects/<num>`); the saved-view number is ignored — see
@@ -304,6 +316,7 @@ renders an error page instead of dropping the server.
 ```sh
 ruby lib/kamandar.rb --serve            # http://127.0.0.1:4567
 ruby lib/kamandar.rb --serve --port 8080
+ruby lib/kamandar.rb --serve --demo     # fabricated data, no token (the screenshot above)
 ```
 
 The page is a small "command center" UI, and it's **pure HTML + CSS — no
@@ -321,7 +334,8 @@ JavaScript**:
   color. Tab switching is pure-CSS (a hidden radio per bucket).
 - **Main panel** — the selected bucket, with a one-line description of what it
   collects under the heading, the matching cards, or a centered empty-state
-  card when nothing's waiting.
+  card when nothing's waiting. Buckets with more than 8 cards **paginate**, with
+  a numbered pager (also pure CSS — a hidden radio per page).
 - **Footer** — version, the localhost/stdlib note, repo link, and the
   generated-at time.
 - Loads the **Google Sans** webfont (the one network asset, allowed here since
