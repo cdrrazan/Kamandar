@@ -470,6 +470,15 @@ term = T.render(buckets, config: config, generated_at: TODAY)
 ok "terminal shows stale handoff suffix",
    term.include?("business days since you handed off")
 ok "terminal lists reviews-owed item", term.include?("#101 Review me")
+ok "terminal (plain) has no ANSI escapes", !term.include?("\e[")
+
+# color mode adds ANSI; stripping the escapes still leaves the content
+term_color = T.render(buckets, config: config, generated_at: TODAY, color: true)
+ok "terminal (color) emits ANSI escapes", term_color.include?("\e[")
+stripped = term_color.gsub(/\e\[[0-9;]*m/, "")
+ok "terminal color content survives stripping (number+title)", stripped.include?("#101 Review me")
+ok "terminal color content survives stripping (repo)", stripped.include?("(o/r)")
+ok "terminal color shows a bucket emoji", term_color.include?("\u{1F4E5}")
 
 # =============================================================================
 # Issue+PR scope (global/org/repo): assigned issues classified by linked PR

@@ -13,7 +13,7 @@ quiet — in your terminal or a self-contained browser page.
 
 ![Ruby](https://img.shields.io/badge/Ruby-3.2%2B-CC342D?logo=ruby&logoColor=white)
 ![Dependencies](https://img.shields.io/badge/dependencies-stdlib%20only-2ea44f)
-![Tests](https://img.shields.io/badge/tests-120%20passing-2ea44f)
+![Tests](https://img.shields.io/badge/tests-125%20passing-2ea44f)
 ![Serverless](https://img.shields.io/badge/serverless-no%20server%20·%20no%20DB%20·%20no%20OAuth-0969da)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![PRs welcome](https://img.shields.io/badge/PRs-welcome-ff69b4)
@@ -114,7 +114,7 @@ Kamandar/
 ├── lib/
 │   └── kamandar.rb     # engine + both surfaces (single file, stdlib only)
 ├── test/
-│   └── test_kamandar.rb  # acceptance tests — zero network, 120 cases
+│   └── test_kamandar.rb  # acceptance tests — zero network, 125 cases
 ├── README.md
 ├── CONTRIBUTING.md
 ├── SECURITY.md
@@ -241,7 +241,9 @@ The same classified buckets feed both surfaces.
 
 ### Terminal (default)
 
-Plain text grouped by bucket, no ANSI — safe to pipe to `mail`. Ideal for cron.
+Grouped by bucket with per-bucket emoji and color **when stdout is a terminal**.
+Piped or redirected (cron, `| mail`), it automatically falls back to plain text
+with no ANSI — so captured output stays clean.
 
 ### Browser (serverless)
 
@@ -312,7 +314,7 @@ and fabricated fixtures — **zero network**.
 ```sh
 ruby test/test_kamandar.rb
 # ...
-# 120 passed, 0 failed
+# 125 passed, 0 failed
 ```
 
 ---

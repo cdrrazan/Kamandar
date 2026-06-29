@@ -836,22 +836,58 @@ module Kamandar
   module TerminalSurface
     module_function
 
-    def render(buckets, config:, generated_at:)
+    # Per-bucket emoji + ANSI foreground color (used only in color mode).
+    ICON = {
+      reviews_owed: "\u{1F4E5}", wip: "\u{1F528}", assigned_not_started: "\u{1F4CB}",
+      in_review: "\u{1F440}", in_qa: "\u{1F9EA}", blocked: "\u{1F6A7}",
+      stale: "\u{23F3}", forgot_reviewer: "\u{1F648}",
+      assigned_todo: "\u{1F4CB}", assigned_wip: "\u{1F528}",
+      assigned_review: "\u{1F440}", assigned_no_reviewer: "\u{1F648}"
+    }.freeze
+    COLOR = {
+      reviews_owed: "34", wip: "35", assigned_not_started: "32",
+      in_review: "36", in_qa: "36", blocked: "31",
+      stale: "33", forgot_reviewer: "33",
+      assigned_todo: "32", assigned_wip: "35",
+      assigned_review: "36", assigned_no_reviewer: "33"
+    }.freeze
+
+    # Render the report. `color: true` adds ANSI escapes + emoji; `false`
+    # produces the exact plain text (pipe/cron/mail safe). Plain output is the
+    # spec the tests assert, so keep the no-color branch byte-for-byte stable.
+    def render(buckets, config:, generated_at:, color: false)
+      paint = lambda do |codes, str|
+        color && codes ? "\e[#{codes}m#{str}\e[0m" : str
+      end
+
       lines = []
-      header = "Kamandar for @#{config[:login]}  —  #{generated_at.strftime('%Y-%m-%d %H:%M')}  (#{config[:day_mode]} days)"
-      header += "  [#{Engine.scope_label(config[:scope])}]" if config[:scope]
-      lines << header
-      lines << ("=" * 72)
+      meta = "@#{config[:login]}  —  #{generated_at.strftime('%Y-%m-%d %H:%M')}  (#{config[:day_mode]} days)"
+      meta += "  [#{Engine.scope_label(config[:scope])}]" if config[:scope]
+      if color
+        lines << "#{paint.call('1', "\u{1F3F9} Kamandar")}  #{paint.call('2', meta)}"
+        lines << paint.call("2", "═" * 72)
+      else
+        lines << "Kamandar for #{meta}"
+        lines << ("=" * 72)
+      end
 
       Engine.bucket_meta(Engine.scope_mode(config)).each do |key, title, empty|
         rows = buckets[key] || []
         lines << ""
-        lines << "#{title} (#{rows.size})"
-        lines << ("-" * title.length)
+        if color
+          col = COLOR[key] || "37"
+          lines << "#{ICON[key] || '•'}  #{paint.call("1;#{col}", title)}  #{paint.call(col, "(#{rows.size})")}"
+          lines << paint.call("2", "─" * (title.length + 4))
+        else
+          lines << "#{title} (#{rows.size})"
+          lines << ("-" * title.length)
+        end
+
         if rows.empty?
-          lines << "  #{empty}"
+          lines << "  #{paint.call('2;3', empty)}"
           next
         end
+
         rows.each do |row|
           suffix =
             if key == :stale && row[:days]
@@ -859,8 +895,11 @@ module Kamandar
             else
               ""
             end
-          lines << "  ##{row[:number]} #{row[:title]}  (#{row[:repo]})#{suffix}"
-          lines << "    #{row[:url]}"
+          num = paint.call("2", "##{row[:number]}")
+          repo = paint.call("2", "(#{row[:repo]})")
+          suf = suffix.empty? ? "" : paint.call("33", suffix)
+          lines << "  #{num} #{row[:title]}  #{repo}#{suf}"
+          lines << "    #{paint.call('2;4', row[:url])}"
         end
       end
       lines << ""
@@ -1294,7 +1333,8 @@ module Kamandar
         warn_if_empty(config, buckets)
       else
         buckets = with_spinner("Fetching your GitHub queue…") { fetch_and_classify(config) }
-        output = TerminalSurface.render(buckets, config: config, generated_at: Time.now)
+        output = TerminalSurface.render(buckets, config: config, generated_at: Time.now,
+                                                 color: $stdout.tty?)
         TerminalSurface.emit(output)
         warn_no_project(config)
         warn_if_empty(config, buckets)
