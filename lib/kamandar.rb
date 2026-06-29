@@ -432,20 +432,36 @@ module Kamandar
       end
     end
 
-    # URLs of the PRs that are actually items on the board. This is the precise
-    # membership test for project scope — filtering by repo would also catch
-    # PRs in the same repo that belong to other boards (e.g. a monorepo).
+    # URLs of the PRs that are themselves items on the board.
     def project_pr_urls(items)
+      board_urls(items, "PullRequest")
+    end
+
+    # URLs of the Issues that are items on the board.
+    def project_issue_urls(items)
+      board_urls(items, "Issue")
+    end
+
+    def board_urls(items, typename)
       items.filter_map do |it|
         content = it["content"]
-        content && content["__typename"] == "PullRequest" ? content["url"] : nil
+        content && content["__typename"] == typename ? content["url"] : nil
       end.uniq
     end
 
-    # Keep only PR nodes whose url is one of `urls` (i.e. on the board).
-    def filter_prs_by_urls(prs, urls)
-      set = urls.compact
-      prs.select { |pr| set.include?(pr["url"]) }
+    # A PR belongs to a project if it is itself a board item OR it closes an
+    # issue that is on the board ("Closes #N"). Boards usually track issues and
+    # the PR is linked rather than carded, so the closing-issue link is what
+    # keeps reviews-owed/gone-quiet from coming up empty under project scope.
+    def pr_on_project?(pr, pr_urls:, issue_urls:)
+      return true if pr_urls.include?(pr["url"])
+      closing = (pr.dig("closingIssuesReferences", "nodes") || []).map { |n| n["url"] }
+      closing.any? { |u| issue_urls.include?(u) }
+    end
+
+    # Keep only PR nodes that belong to the project (board item or linked issue).
+    def filter_prs_on_project(prs, pr_urls:, issue_urls:)
+      prs.select { |pr| pr_on_project?(pr, pr_urls: pr_urls, issue_urls: issue_urls) }
     end
 
     # -- search strings -------------------------------------------------------
@@ -489,6 +505,7 @@ module Kamandar
         nodes { ... on ReviewRequestedEvent { createdAt } }
       }
       latestOpinionatedReviews(first: 10) { nodes { state submittedAt } }
+      closingIssuesReferences(first: 5) { nodes { url } }
     GQL
 
     # One GraphQL document running BOTH PR searches via aliases.
@@ -1438,10 +1455,12 @@ module Kamandar
             parsed[:org], parsed[:num], config[:token],
             iteration_field: config[:iteration_field]
           )
-          # Limit PR buckets to the PRs that are items on the board.
-          urls = Engine.project_pr_urls(project_items)
-          owed = Engine.filter_prs_by_urls(owed, urls)
-          mine = Engine.filter_prs_by_urls(mine, urls)
+          # Limit PR buckets to PRs that belong to this project — board items or
+          # PRs that close a board issue ("Closes #N").
+          pr_urls = Engine.project_pr_urls(project_items)
+          issue_urls = Engine.project_issue_urls(project_items)
+          owed = Engine.filter_prs_on_project(owed, pr_urls: pr_urls, issue_urls: issue_urls)
+          mine = Engine.filter_prs_on_project(mine, pr_urls: pr_urls, issue_urls: issue_urls)
         else
           $stderr.puts "kamandar: SCOPE=project needs PROJECT_URL — board buckets will be empty."
         end

@@ -234,10 +234,10 @@ check "qualifier for project is empty (post-filtered)",
 check "scope_label project", E.scope_label({ mode: "project" }), "project"
 check "scope_label repo",    E.scope_label({ mode: "repo", repo: "o/r" }), "repo:o/r"
 
-# -- project board membership (PR items, by url) ------------------------------
-# A board can hold Issue items and PullRequest items; project scope filters PR
-# buckets to the PullRequest items only, matched by url (not by repo — a
-# monorepo would leak PRs from other boards).
+# -- project membership (board item OR closes a board issue) ------------------
+# A board holds Issue items and (rarely) PullRequest items. A PR belongs to the
+# project if it is a board item, OR it closes an issue that is on the board —
+# the usual case, since boards track issues and PRs link via "Closes #N".
 def pr_item(url:)
   {
     "fieldValues" => { "nodes" => [] },
@@ -246,22 +246,34 @@ def pr_item(url:)
   }
 end
 
+# helper: a PR node that closes the given issue url(s)
+def pr_closing(number:, url:, closes: [])
+  pr(number: number, repo: "o/r", url: url, created: D.(2026, 6, 18))
+    .merge("closingIssuesReferences" => { "nodes" => closes.map { |u| { "url" => u } } })
+end
+
+ISSUE_URL = "https://github.com/o/r/issues/1"
 board_items = [
-  item(login: "me", status: "Todo", number: 1),                 # Issue item, ignored
-  pr_item(url: "https://github.com/o/r/pull/5"),                 # PR on the board
-  pr_item(url: "https://github.com/o/r/pull/9")                  # PR on the board
+  item(login: "me", status: "Todo", number: 1),     # Issue item -> issue url derived below
+  pr_item(url: "https://github.com/o/r/pull/5")      # a PR carded directly on the board
 ]
-check "project_pr_urls collects only PullRequest items",
-      E.project_pr_urls(board_items),
-      ["https://github.com/o/r/pull/5", "https://github.com/o/r/pull/9"]
+check "project_pr_urls collects PullRequest items",
+      E.project_pr_urls(board_items), ["https://github.com/o/r/pull/5"]
+check "project_issue_urls collects Issue items",
+      E.project_issue_urls(board_items), [ISSUE_URL]
 
 prs_for_filter = [
-  pr(number: 5, repo: "o/r", url: "https://github.com/o/r/pull/5", created: D.(2026, 6, 18)),
-  pr(number: 7, repo: "o/r", url: "https://github.com/o/r/pull/7", created: D.(2026, 6, 18))
+  pr_closing(number: 5, url: "https://github.com/o/r/pull/5", closes: []),           # board item
+  pr_closing(number: 8, url: "https://github.com/o/r/pull/8", closes: [ISSUE_URL]),  # closes board issue
+  pr_closing(number: 9, url: "https://github.com/o/r/pull/9", closes: ["https://github.com/o/r/issues/99"]) # other board
 ]
-check "filter_prs_by_urls keeps only PRs on the board",
-      E.filter_prs_by_urls(prs_for_filter, E.project_pr_urls(board_items)).map { |p| p["number"] },
-      [5]
+kept_on_project = E.filter_prs_on_project(
+  prs_for_filter,
+  pr_urls: E.project_pr_urls(board_items),
+  issue_urls: E.project_issue_urls(board_items)
+)
+check "filter_prs_on_project keeps board items and PRs closing a board issue",
+      kept_on_project.map { |p| p["number"] }.sort, [5, 8]
 
 # -- Config wires scope from env + --scope flag -------------------------------
 cfg_default = Kamandar::Config.from(env: {}, argv: [])
