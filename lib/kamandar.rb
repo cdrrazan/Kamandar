@@ -649,6 +649,25 @@ module Kamandar
       issue.dig("closedByPullRequestsReferences", "nodes") || []
     end
 
+    # Map of board issue url => normalized issue row, for resolving a PR back to
+    # the issue card it tracks.
+    def board_issue_index(items)
+      index = {}
+      items.each do |it|
+        content = it["content"]
+        next unless content && content["__typename"] == "Issue" && content["url"]
+        index[content["url"]] = normalize_item(it)
+      end
+      index
+    end
+
+    # The board issue a PR closes (first match in `issue_index`), or nil.
+    def linked_board_issue(pr, issue_index)
+      closing = (pr.dig("closingIssuesReferences", "nodes") || []).map { |n| n["url"] }
+      url = closing.find { |u| issue_index.key?(u) }
+      url && issue_index[url]
+    end
+
     # Classify an assigned issue by the state of its linked PR(s):
     #   :not_started — no open linked PR
     #   :draft       — every linked PR is a draft (work in progress)
@@ -688,8 +707,13 @@ module Kamandar
 
     # Board-driven buckets (project scope).
     def classify_project(owed_prs:, my_prs:, project_items:, iterations:, config:, today:)
-      mode = config[:day_mode]
-      reviews_owed = owed_prs.map { |pr| normalize_pr(pr) }
+      # The board tracks issues, so a review you owe is shown as the board issue
+      # the PR closes; if a PR closes no board issue, the PR itself is shown.
+      issue_index = board_issue_index(project_items)
+      reviews_owed = owed_prs
+                     .map { |pr| linked_board_issue(pr, issue_index) || normalize_pr(pr) }
+                     .uniq { |row| row[:url] }
+
       wip = my_prs.select { |pr| pr["isDraft"] }.map { |pr| normalize_pr(pr) }
       stale = stale_rows(my_prs, config: config, today: today)
       forgot = my_prs.select { |pr| forgot_reviewer?(pr) }.map { |pr| normalize_pr(pr) }

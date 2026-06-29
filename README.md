@@ -13,7 +13,7 @@ quiet — in your terminal or a self-contained browser page.
 
 ![Ruby](https://img.shields.io/badge/Ruby-3.2%2B-CC342D?logo=ruby&logoColor=white)
 ![Dependencies](https://img.shields.io/badge/dependencies-stdlib%20only-2ea44f)
-![Tests](https://img.shields.io/badge/tests-117%20passing-2ea44f)
+![Tests](https://img.shields.io/badge/tests-120%20passing-2ea44f)
 ![Serverless](https://img.shields.io/badge/serverless-no%20server%20·%20no%20DB%20·%20no%20OAuth-0969da)
 ![License](https://img.shields.io/badge/license-MIT-blue)
 ![PRs welcome](https://img.shields.io/badge/PRs-welcome-ff69b4)
@@ -114,7 +114,7 @@ Kamandar/
 ├── lib/
 │   └── kamandar.rb     # engine + both surfaces (single file, stdlib only)
 ├── test/
-│   └── test_kamandar.rb  # acceptance tests — zero network, 117 cases
+│   └── test_kamandar.rb  # acceptance tests — zero network, 120 cases
 ├── README.md
 ├── CONTRIBUTING.md
 ├── SECURITY.md
@@ -179,8 +179,10 @@ SCOPE=project ruby lib/kamandar.rb             # repos on your project board
 `org`/`repo` filter server-side via a GitHub search qualifier; `project` keeps
 only the PRs that **belong to the board** — either carded on it directly, or
 (the usual case, since boards track issues) a PR that **closes a board issue**
-via `Closes #N`. So the review you owe on John's PR still shows when his *issue*
-is on the board, even though the PR isn't a card. Anything unrecognized (or
+via `Closes #N`. Because the board tracks issues, a review you owe is shown as
+the **board issue** the PR closes (falling back to the PR itself when it closes
+no board issue) — so John's review surfaces as his card in "Ready for Review",
+not a loose PR. Anything unrecognized (or
 `org`/`repo` with no value, or `project` with no `PROJECT_URL`) safely falls
 back to `global`. The active scope is shown in the terminal header and the
 browser page.
@@ -310,7 +312,7 @@ and fabricated fixtures — **zero network**.
 ```sh
 ruby test/test_kamandar.rb
 # ...
-# 117 passed, 0 failed
+# 120 passed, 0 failed
 ```
 
 ---

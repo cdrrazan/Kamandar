@@ -275,6 +275,27 @@ kept_on_project = E.filter_prs_on_project(
 check "filter_prs_on_project keeps board items and PRs closing a board issue",
       kept_on_project.map { |p| p["number"] }.sort, [5, 8]
 
+# project scope: a review you owe is shown as the board ISSUE the PR closes
+proj_items = [item(login: "me", status: "Ready for Review", number: 50)] # url .../issues/50
+cfg_proj = { login: "me", scope: { mode: "project" },
+             not_started: [], review_statuses: [], qa_statuses: [], blocked_statuses: [],
+             stale_days: 2, day_mode: "business" }
+owed_linked = [pr(number: 900, title: "PR for 50", url: "https://github.com/o/r/pull/900", created: D.(2026, 6, 18))
+                 .merge("closingIssuesReferences" => { "nodes" => [{ "url" => "https://github.com/o/r/issues/50" }] })]
+b_linked = E.classify(owed_prs: owed_linked, my_prs: [], project_items: proj_items,
+                      config: cfg_proj, today: TODAY)
+check "project reviews-owed resolves to the linked board issue",
+      b_linked[:reviews_owed].map { |r| r[:number] }, [50]
+check "project reviews-owed points at the issue url",
+      b_linked[:reviews_owed].first[:url], "https://github.com/o/r/issues/50"
+
+# a PR that closes no board issue is shown as the PR itself
+owed_unlinked = [pr(number: 901, title: "Loose PR", url: "https://github.com/o/r/pull/901", created: D.(2026, 6, 18))]
+b_unlinked = E.classify(owed_prs: owed_unlinked, my_prs: [], project_items: proj_items,
+                        config: cfg_proj, today: TODAY)
+check "project reviews-owed falls back to the PR when no board issue",
+      b_unlinked[:reviews_owed].map { |r| r[:number] }, [901]
+
 # -- Config wires scope from env + --scope flag -------------------------------
 cfg_default = Kamandar::Config.from(env: {}, argv: [])
 check "config default scope is global", cfg_default[:scope], { mode: "global" }
