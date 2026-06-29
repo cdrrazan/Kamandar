@@ -810,6 +810,57 @@ module Kamandar
   end
 
   # ---------------------------------------------------------------------------
+  # Demo — fabricated buckets for screenshots and offline trials (`--demo`).
+  # Pure and deterministic: no network, no ENV, no randomness — so a `--demo`
+  # render is byte-stable and needs no token. Produces 15–20 plausible rows per
+  # bucket, shaped exactly like `Engine.classify` output so every surface and
+  # the pagination logic exercise the same code paths as live data.
+  # ---------------------------------------------------------------------------
+  module Demo
+    module_function
+
+    REPOS = %w[
+      acme/api acme/web acme/mobile acme/billing acme/search
+      acme/infra acme/auth acme/docs core/platform core/design
+    ].freeze
+
+    TITLES = [
+      "Fix flaky checkout spec", "Add rate limiting to the public API",
+      "Refactor the session store", "Bump Rails to 8.1",
+      "Cache the dashboard query", "Handle webhook retries idempotently",
+      "Migrate uploads to S3", "Tidy up the onboarding flow",
+      "Add dark mode to settings", "Backfill missing slugs",
+      "Guard against nil reviewer", "Paginate the activity feed",
+      "Speed up the search index", "Drop the legacy columns",
+      "Wire up feature flags", "Improve the empty states",
+      "Extract the billing service", "Add OpenTelemetry traces",
+      "Fix N+1 on the project board", "Harden the CSV importer"
+    ].freeze
+
+    # Buckets keyed off bucket_meta for the given scope mode. Counts land in
+    # 15..20 and vary per bucket, but deterministically (index-derived).
+    def buckets(mode)
+      Engine.bucket_meta(mode).each_with_index.to_h do |(key, _t, _e), ki|
+        count = 15 + (ki * 2) % 6 # 15..19, stable per position
+        [key, (1..count).map { |j| row(key, ki, j) }]
+      end
+    end
+
+    # Buckets where the linked work is an issue rather than a PR (for URLs).
+    ISSUE_KEYS = %i[assigned_not_started assigned_todo in_qa blocked].freeze
+
+    def row(key, ki, j)
+      number = (ki + 1) * 100 + j
+      repo   = REPOS[(ki + j) % REPOS.size]
+      title  = TITLES[(ki * 7 + j) % TITLES.size]
+      kind   = ISSUE_KEYS.include?(key) ? "issues" : "pull"
+      base   = { number: number.to_s, title: title, repo: repo,
+                 url: "https://github.com/#{repo}/#{kind}/#{number}" }
+      key == :stale ? base.merge(days: 3 + (j % 12), mode: "calendar") : base
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # Surface — dispatch + shared helpers
   # ---------------------------------------------------------------------------
   module Surface
@@ -1321,7 +1372,7 @@ module Kamandar
       total = meta_list.sum { |key, _, _| (buckets[key] || []).size }
       scope_label = config[:scope] ? Engine.scope_label(config[:scope]) : "global"
       app = tabbed_html(buckets, meta_list, total: total, scope_label: scope_label)
-      tab_rules = tab_css(meta_list.size)
+      tab_rules = tab_css(meta_list.size) + pager_css(buckets, meta_list)
 
       refresh = poll.to_i > 0 ? %(<meta http-equiv="refresh" content="#{poll.to_i}">) : ""
 
@@ -1419,6 +1470,8 @@ module Kamandar
               %(<span class="navtitle">#{esc.call(short)}</span>) +
               %(<span class="#{cls}">#{rows.size}</span></label>)
         items << { key: key, size: rows.size, nav: nav }
+        slices = rows.each_slice(PAGE_SIZE).to_a # [] when empty
+        paged = slices.size > 1
         body =
           if rows.empty?
             <<~EMPTY.chomp
@@ -1428,11 +1481,12 @@ module Kamandar
               </div>
             EMPTY
           else
-            rows.map { |row| BrowserSurface.card(row, key) }.join("\n")
+            paginated_body(slices, key, i, paged)
           end
         classes = +"bucket"
         classes << " warn" if key == :stale
         classes << " is-empty" if rows.empty?
+        classes << " paged" if paged
         desc = DESCRIPTIONS[key]
         desc_html = desc ? %(<p class="desc">#{esc.call(desc)}</p>) : ""
         panels << <<~SECTION.chomp
@@ -1464,6 +1518,46 @@ module Kamandar
     # Buckets that represent *other people's* work (review requested from you),
     # as opposed to your own assigned issues/PRs. Drives the sidebar split.
     REVIEW_KEYS = %i[reviews_owed].freeze
+
+    # Cards shown per page within a bucket before pagination kicks in.
+    PAGE_SIZE = 8
+
+    # Render a bucket's cards as paginated pages. When there's only one page,
+    # the cards are emitted plainly. With more, each page is a `.page` div
+    # preceded by hidden radios (one per page) and followed by a numbered pager;
+    # `pager_css` generates the rules that show the chosen page — pure CSS, no JS.
+    def paginated_body(slices, key, panel_index, paged)
+      page_html = slices.map do |slice|
+        slice.map { |row| BrowserSurface.card(row, key) }.join("\n")
+      end
+      return page_html.first unless paged
+
+      pages = page_html.map { |cards| %(<div class="page">#{cards}</div>) }.join("\n")
+      radios = (0...slices.size).map do |p|
+        ck = p.zero? ? " checked" : ""
+        %(<input class="pgr" type="radio" name="pg-#{panel_index}" id="pg-#{panel_index}-#{p}"#{ck}>)
+      end.join
+      labels = (0...slices.size).map do |p|
+        %(<label for="pg-#{panel_index}-#{p}">#{p + 1}</label>)
+      end.join
+      %(#{radios}<div class="pages">#{pages}</div><nav class="pager">#{labels}</nav>)
+    end
+
+    # Per-panel pagination rules: for each paginated bucket, show the page whose
+    # radio is checked and highlight its pager label. Generated to match the
+    # exact page counts in the current data (CSS can't loop).
+    def pager_css(buckets, meta_list)
+      meta_list.each_with_index.flat_map do |(key, _t, _e), i|
+        n = ((buckets[key] || []).size / PAGE_SIZE.to_f).ceil
+        next [] if n <= 1
+
+        (0...n).map do |p|
+          sel = %(#pg-#{i}-#{p}:checked)
+          %(#{sel}~.pages>.page:nth-child(#{p + 1}){display:block}) +
+            %(#{sel}~.pager label[for="pg-#{i}-#{p}"]{background:var(--accent);color:#fff;border-color:var(--accent)})
+        end
+      end.join("\n")
+    end
 
     # One carded sidebar group: a header (title + open count) and its tabs.
     # Skipped entirely if the group has no buckets in the current scope.
@@ -1591,6 +1685,12 @@ module Kamandar
         .panels{flex:1 1 auto;min-width:0;margin:0;padding:0;max-width:none}
         .panels .bucket{display:none;margin:0}
         .panels .desc{margin:-2px 2px 14px;color:var(--muted);font-size:.86rem;line-height:1.4;max-width:62ch}
+        /* pagination — radios drive which .page shows (see pager_css) */
+        .pgr{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+        .bucket.paged .pages>.page{display:none}
+        .pager{display:flex;flex-wrap:wrap;gap:6px;margin-top:16px}
+        .pager label{cursor:pointer;min-width:34px;text-align:center;padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--muted);font-weight:600;font-size:.82rem;font-variant-numeric:tabular-nums}
+        .pager label:hover{color:var(--fg);border-color:var(--accent)}
         /* centered empty-state card */
         .emptybox{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;min-height:46vh;border:1px dashed var(--border);border-radius:16px;background:var(--card);box-shadow:var(--shadow);padding:40px 24px;text-align:center}
         .emptyicon{font-size:2.6rem;line-height:1;opacity:.85;filter:grayscale(.15)}
@@ -1851,6 +1951,7 @@ module Kamandar
         theme: (flags[:theme] || env["THEME"] || "").to_s.strip.downcase,
         dashboard: flags[:dashboard] || false,
         serve: flags[:serve] || false,
+        demo: flags[:demo] || false,
         port: flags[:port] || (env["PORT"] || Server::DEFAULT_PORT).to_i,
         project_org: project_org,
         list_statuses: flags[:statuses] || false,
@@ -1881,6 +1982,8 @@ module Kamandar
           flags[:dashboard] = true
         when "--serve"
           flags[:serve] = true
+        when "--demo"
+          flags[:demo] = true
         when "--port"
           flags[:port] = argv[i + 1].to_i
           i += 1
@@ -2272,6 +2375,9 @@ module Kamandar
     # Fetch everything, then classify once. The bucket set depends on scope:
     # project is board-driven, every other scope is issue+PR driven.
     def fetch_and_classify(config)
+      # --demo skips the network entirely and serves fabricated buckets.
+      return Demo.buckets(Engine.scope_mode(config)) if config[:demo]
+
       scope = config[:scope] || { mode: "global" }
       qualifier = Engine.search_qualifier(scope)
 
@@ -2307,6 +2413,8 @@ module Kamandar
     end
 
     def validate!(config)
+      return if config[:demo] # demo mode fabricates data; no token/login needed
+
       missing = []
       missing << "GITHUB_TOKEN" unless config[:token] && !config[:token].empty?
       missing << "GH_LOGIN" unless config[:login] && !config[:login].empty?

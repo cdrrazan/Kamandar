@@ -322,6 +322,12 @@ check "scope_given true when SCOPE env set",
 check "scope_given true when --scope flag set",
       Kamandar::Config.from(env: {}, argv: ["--scope", "global"])[:scope_given], true
 
+# --demo flag fabricates data and needs no token/login.
+check "config --demo flag off by default",
+      Kamandar::Config.from(env: {}, argv: [])[:demo], false
+check "config --demo flag sets demo",
+      Kamandar::Config.from(env: {}, argv: ["--demo"])[:demo], true
+
 # -- interactive scope picker -------------------------------------------------
 # Feeds canned stdin; captures the prompt on a StringIO so nothing hits stderr.
 # Returns [{scope:, project_url:}, prompt_text].
@@ -616,6 +622,32 @@ ok "selected tab flips text to white", page.include?('.navitem[for="kt-0"] .navt
 ok "server page stays script-free", !(page =~ /<script/)
 # tab_css emits one show + one highlight rule per bucket, scaled to the count.
 ok "tab_css scales to bucket count", SURF.tab_css(3).scan("display:block").size == 3
+
+# --- Demo data + pagination -------------------------------------------------
+DEMO = Kamandar::Demo
+%w[project global].each do |dmode|
+  db = DEMO.buckets(dmode)
+  keys = E.bucket_meta(dmode).map(&:first)
+  ok "demo #{dmode}: covers every bucket", db.keys.sort == keys.sort
+  ok "demo #{dmode}: 15..20 rows per bucket", db.values.all? { |r| (15..20).cover?(r.size) }
+  ok "demo #{dmode}: rows shaped like real cards",
+     db.values.flatten.all? { |r| r[:number] && r[:title] && r[:repo] && r[:url] }
+end
+ok "demo stale rows carry a waiting badge",
+   DEMO.buckets("project")[:stale].all? { |r| r[:days] && r[:mode] }
+ok "demo is deterministic", DEMO.buckets("global") == DEMO.buckets("global")
+ok "demo URLs point at github.com", DEMO.buckets("project")[:reviews_owed].all? { |r| r[:url].start_with?("https://github.com/") }
+
+# pagination: a >PAGE_SIZE bucket splits into pages with a numbered pager.
+demo_page = SURF.page(DEMO.buckets("project"), config: config, generated_at: TODAY, mode: "project")
+ok "pagination splits long buckets into pages", demo_page.scan(%(<div class="page">)).size > 8
+ok "pagination renders a numbered pager", demo_page.include?(%(<nav class="pager">))
+ok "paginated buckets get the .paged class", demo_page =~ /class="bucket[^"]*\bpaged\b/
+ok "pager_css shows the chosen page", demo_page.include?("#pg-0-0:checked~.pages>.page:nth-child(1){display:block}")
+# a short bucket (<= PAGE_SIZE) gets no pager.
+short = SURF.page({ reviews_owed: [{ number: "1", title: "x", repo: "a/b", url: "http://x" }] },
+                  config: config, generated_at: TODAY, mode: "global")
+ok "short buckets are not paginated", !short.include?(%(<nav class="pager">))
 # premium chrome: top nav, sidebar header, and footer.
 ok "server page has a top nav", page.include?(%(<nav class="topbar">)) &&
                                 page.include?(%(<span class="brandname">Kamandar</span>))
