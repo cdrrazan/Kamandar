@@ -1285,7 +1285,8 @@ module Kamandar
       esc = BrowserSurface.method(:escape)
       meta_list = Engine.bucket_meta(Engine.scope_mode(config))
       total = meta_list.sum { |key, _, _| (buckets[key] || []).size }
-      sections = BrowserSurface.sections_html(buckets, meta_list)
+      app = tabbed_html(buckets, meta_list)
+      tab_rules = tab_css(meta_list.size)
 
       refresh = poll.to_i > 0 ? %(<meta http-equiv="refresh" content="#{poll.to_i}">) : ""
 
@@ -1311,7 +1312,7 @@ module Kamandar
         #{refresh}
         <title>Kamandar — @#{esc.call(config[:login])}</title>
         #{FONT_LINKS}
-        <style>#{BrowserSurface.css}#{extra_css}</style>
+        <style>#{BrowserSurface.css}#{extra_css}#{tab_rules}</style>
         </head>
         <body>
         <header>
@@ -1330,12 +1331,64 @@ module Kamandar
             </form>
           </div>
         </header>
-        <main>
-        #{sections}
-        </main>
+        #{app}
         </body>
         </html>
       HTML
+    end
+
+    # Build the sidebar + tabbed panels. Pure CSS tabs: one hidden radio per
+    # bucket drives which panel shows (`tab_css` generates the per-index rules),
+    # so it works with no JavaScript. The first bucket is selected by default.
+    def tabbed_html(buckets, meta_list)
+      esc = BrowserSurface.method(:escape)
+      radios = []
+      navs = []
+      panels = []
+      meta_list.each_with_index do |(key, title, empty), i|
+        rows = buckets[key] || []
+        meta = BrowserSurface::BUCKET_META[key] || { icon: "•", color: "var(--accent)" }
+        checked = i.zero? ? " checked" : ""
+        radios << %(<input class="tabr" type="radio" name="kt" id="kt-#{i}"#{checked}>)
+        cls = rows.empty? ? "count z" : "count"
+        navs << %(<label class="navitem" for="kt-#{i}" style="--c:#{meta[:color]}">) +
+                %(<span class="icon">#{meta[:icon]}</span>) +
+                %(<span class="navtitle">#{esc.call(title)}</span>) +
+                %(<span class="#{cls}">#{rows.size}</span></label>)
+        body =
+          if rows.empty?
+            %(<p class="empty">#{esc.call(empty)}</p>)
+          else
+            rows.map { |row| BrowserSurface.card(row, key) }.join("\n")
+          end
+        classes = +"bucket"
+        classes << " warn" if key == :stale
+        classes << " is-empty" if rows.empty?
+        panels << <<~SECTION.chomp
+          <section class="#{classes}" id="kp-#{i}" style="--c:#{meta[:color]}">
+            <h2><span class="icon">#{meta[:icon]}</span> <span class="htitle">#{esc.call(title)}</span> <span class="count">#{rows.size}</span></h2>
+            #{body}
+          </section>
+        SECTION
+      end
+
+      <<~APP
+        <div class="app">
+        #{radios.join("\n")}
+        <aside class="sidebar"><nav>#{navs.join("\n")}</nav></aside>
+        <main class="panels">#{panels.join("\n")}</main>
+        </div>
+      APP
+    end
+
+    # Per-index tab rules. CSS can't loop, and the bucket count varies by scope
+    # (project = 8, issue = 6), so the show-panel / highlight-tab pairs are
+    # generated to match the current bucket count.
+    def tab_css(count)
+      (0...count).map do |i|
+        %(#kt-#{i}:checked~.panels #kp-#{i}{display:block}) +
+          %(#kt-#{i}:checked~.sidebar .navitem[for="kt-#{i}"]{background:var(--card);border-color:var(--c);box-shadow:var(--shadow)})
+      end.join("\n")
     end
 
     # A tiny error page reusing the same chrome — shown when a fetch fails so the
@@ -1372,6 +1425,24 @@ module Kamandar
     def extra_css
       <<~CSS
         body{font-family:"Google Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+        .app{display:flex;gap:22px;max-width:1040px;margin:0 auto;padding:20px 16px 56px;align-items:flex-start}
+        .tabr{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+        .sidebar{position:sticky;top:96px;flex:none;width:240px}
+        .sidebar nav{display:flex;flex-direction:column;gap:4px}
+        .navitem{display:flex;align-items:center;gap:9px;padding:9px 11px;border:1px solid transparent;border-radius:9px;cursor:pointer;color:var(--fg)}
+        .navitem:hover{background:var(--card)}
+        .navtitle{flex:1 1 auto;min-width:0;font-weight:600;font-size:.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .navitem .count.z{background:var(--border);color:var(--muted)}
+        .panels{flex:1 1 auto;min-width:0;margin:0;padding:0;max-width:none}
+        .panels .bucket{display:none;margin:0}
+        .tabr:focus-visible+.tabr+*,.navitem:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+        @media (max-width:720px){
+          .app{flex-direction:column;gap:14px}
+          .sidebar{position:static;width:auto}
+          .sidebar nav{flex-direction:row;flex-wrap:wrap}
+          .navitem{flex:0 0 auto}
+          .navtitle{display:none}
+        }
         .controls{margin:12px 0 0;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
         .controls select,.controls input,.controls button{font:inherit;font-size:.82rem;background:var(--card);color:var(--fg);border:1px solid var(--border);border-radius:8px;padding:6px 10px}
         .controls input{min-width:160px}

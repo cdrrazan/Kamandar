@@ -595,7 +595,18 @@ ok "server page loads the Google Sans webfont",
    page.include?("fonts.googleapis.com/css2?family=Google+Sans") &&
    page.include?(%(<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>))
 ok "server page applies Google Sans in CSS", page.include?(%(font-family:"Google Sans"))
-ok "server page NEVER contains the token", !page.include?(SECRET)
+# sidebar + CSS-only tabs (no JS): a hidden radio per bucket, a sidebar nav,
+# and per-index rules that reveal the matching panel.
+ok "server page has a sidebar nav", page.include?(%(<aside class="sidebar">)) &&
+                                    page.include?(%(<label class="navitem"))
+ok "server page builds radio tabs", page.include?(%(<input class="tabr" type="radio" name="kt" id="kt-0" checked>)) &&
+                                    page.include?(%(id="kt-1"))
+ok "server page panels are id'd", page.include?(%(<main class="panels">)) &&
+                                  page.include?(%(id="kp-0"))
+ok "server page generates tab rules", page.include?("#kt-0:checked~.panels #kp-0{display:block}")
+ok "server page stays script-free", !(page =~ /<script/)
+# tab_css emits one show + one highlight rule per bucket, scaled to the count.
+ok "tab_css scales to bucket count", SURF.tab_css(3).scan("display:block").size == 3
 
 # error_page: same chrome, no token, still renders a retry link.
 errp = SURF.error_page("boom", config: config.merge(token: SECRET))
