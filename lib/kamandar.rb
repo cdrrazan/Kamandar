@@ -1327,11 +1327,20 @@ module Kamandar
       out.puts "  2) org      — a single organization"
       out.puts "  3) repo     — a single repository"
       out.puts "  4) project  — PRs that are items on a GitHub project board"
-      out.print "Select 1-4 (Enter = global): "
+
+      # Re-prompt until a valid choice; blank/Enter (or EOF) means global.
+      choice = nil
+      loop do
+        out.print "Select 1-4 (Enter = global): "
+        line = input.gets
+        choice = line.nil? ? "" : line.strip
+        break if choice.empty? || %w[1 2 3 4].include?(choice)
+        out.puts "kamandar: please enter 1, 2, 3, or 4 (or press Enter for global)."
+      end
 
       project_url = config[:project_url]
       scope =
-        case (input.gets || "").strip
+        case choice
         when "2"
           out.print "Org name: "
           name = (input.gets || "").strip
