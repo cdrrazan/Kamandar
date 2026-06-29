@@ -1481,8 +1481,7 @@ module Kamandar
         .brand{display:flex;align-items:center;gap:8px;text-decoration:none;font-weight:800;font-size:1.18rem;letter-spacing:-.01em;color:var(--fg)}
         .brand .bow{font-size:1.2rem}
         .brandname{background:linear-gradient(90deg,var(--accent),#8250df);-webkit-background-clip:text;background-clip:text;color:transparent}
-        .topbar .meta{margin:0}
-        .nav-wrap .ghlink{margin-left:auto}
+        .topbar .meta{margin:0 0 0 auto}
         /* toolbar row (below the nav) */
         .toolbar{border-top:1px solid var(--border)}
         .controls{max-width:70%;margin:0 auto;padding:10px 16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
