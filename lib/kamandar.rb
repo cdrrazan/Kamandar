@@ -57,6 +57,7 @@
 #       project scope; set it only to wire bucket #3 non-interactively.)
 #   3. Run:
 #        ruby lib/kamandar.rb              # terminal output (default)
+#        ruby lib/kamandar.rb --dashboard  # full-screen Matrix TUI (rain splash)
 #        ruby lib/kamandar.rb --browser    # render + open a static HTML page
 #        ruby lib/kamandar.rb -b --watch 60  # live tab, refreshed every 60s
 #        ruby lib/kamandar.rb --statuses   # list a board's Status labels (to
@@ -140,6 +141,7 @@ require "date"
 require "time"
 require "tmpdir"
 require "rbconfig"
+require "io/console" # default gem (ships with Ruby): winsize + getch for the TUI
 
 module Kamandar
   VERSION = "1.0.0"
@@ -974,6 +976,87 @@ module Kamandar
   end
 
   # ---------------------------------------------------------------------------
+  # Dashboard surface — full-screen Matrix TUI (alt-screen) + digital rain.
+  # Pure ANSI, stdlib only. The pure frame builders are unit-tested; the screen
+  # takeover + key loop live in CLI.run_dashboard.
+  # ---------------------------------------------------------------------------
+  module DashboardSurface
+    module_function
+
+    ENTER_ALT = "\e[?1049h\e[?25l" # alt buffer + hide cursor
+    LEAVE_ALT = "\e[?25h\e[?1049l" # show cursor + leave alt buffer
+    CLEAR_HOME = "\e[2J\e[H"
+
+    # Falling-rain glyphs: digits + halfwidth katakana (the iconic look).
+    GLYPHS = ((0x30..0x39).to_a + (0xFF66..0xFF9D).to_a).map { |cp| [cp].pack("U") }.freeze
+
+    # One digital-rain frame for a cols×rows grid given per-column head rows.
+    # Head is near-white, the next cell bright green, the trail fades to dim.
+    def rain_frame(cols:, rows:, heads:)
+      grid = Array.new(rows) { Array.new(cols, " ") }
+      heads.each_with_index do |head, col|
+        (0..7).each do |t|
+          r = head - t
+          next if r.negative? || r >= rows
+          style = if t.zero? then "1;97"
+                  elsif t <= 1 then "1;92"
+                  elsif t <= 3 then "32"
+                  else "2;32"
+                  end
+          grid[r][col] = "\e[#{style}m#{GLYPHS.sample}\e[0m"
+        end
+      end
+      CLEAR_HOME + grid.map(&:join).join("\r\n")
+    end
+
+    # Advance the rain one step; columns that fall off the bottom respawn above.
+    def step_heads(heads, rows)
+      heads.map { |h| h > rows + 8 ? -rand(0..rows) : h + 1 }
+    end
+
+    def init_heads(cols, rows)
+      Array.new(cols) { -rand(0...[rows, 1].max) }
+    end
+
+    # The static dashboard frame: green panels windowed to fit, header + footer.
+    def render(buckets, config:, generated_at:, rows:, cols:)
+      w  = [cols - 4, 8].max
+      br = ->(s) { "\e[1;92m#{s}\e[0m" }
+      gr = ->(s) { "\e[32m#{s}\e[0m" }
+      dm = ->(s) { "\e[2;32m#{s}\e[0m" }
+      fr = ->(body, fn) { br.call("║ ") + fn.call(TerminalSurface.mpad(body, w)) + br.call(" ║") }
+
+      body = []
+      Engine.bucket_meta(Engine.scope_mode(config)).each do |key, title, empty|
+        data  = buckets[key] || []
+        left  = "╔═ #{title.upcase} "
+        right = " #{data.size} ═╗"
+        fill  = [(w + 4) - left.length - right.length, 0].max
+        body << br.call(left + ("═" * fill) + right)
+        if data.empty?
+          body << fr.call(empty, dm)
+        else
+          data.each do |r|
+            tag = (key == :stale && r[:days]) ? "  · #{r[:days]}d" : ""
+            body << fr.call("##{r[:number]} #{r[:title]}  (#{r[:repo]})#{tag}", gr)
+          end
+        end
+        body << br.call("╚" + ("═" * (w + 2)) + "╝")
+      end
+
+      meta = "@#{config[:login]}  #{generated_at.strftime('%H:%M:%S')}  (#{config[:day_mode]})"
+      meta += "  [#{Engine.scope_label(config[:scope])}]" if config[:scope]
+      header = br.call("▓▒░ KAMANDAR ░▒▓  ") + gr.call(TerminalSurface.mpad(meta, [cols - 19, 0].max))
+      footer = br.call(TerminalSurface.mpad(" [r] refresh    [q] quit", cols))
+
+      inner = [rows - 2, 1].max
+      view  = body.first(inner)
+      view += Array.new(inner - view.size, "") if view.size < inner
+      CLEAR_HOME + ([header] + view + [footer]).join("\r\n")
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # Browser surface — one self-contained, offline-capable HTML file.
   # ---------------------------------------------------------------------------
   module BrowserSurface
@@ -1324,6 +1407,7 @@ module Kamandar
         output_env: (env["OUTPUT"] || "terminal"),
         browser_flag: flags[:browser],
         theme: (flags[:theme] || env["THEME"] || "").to_s.strip.downcase,
+        dashboard: flags[:dashboard] || false,
         list_statuses: flags[:statuses] || false,
         watch_seconds: flags.key?(:watch) ? flags[:watch] : (env["WATCH_SECONDS"] || "0").to_i
       }
@@ -1348,6 +1432,8 @@ module Kamandar
           flags[:scope] = Regexp.last_match(1)
         when "--statuses"
           flags[:statuses] = true
+        when "--dashboard"
+          flags[:dashboard] = true
         when "--theme"
           flags[:theme] = argv[i + 1]
           i += 1
@@ -1385,6 +1471,12 @@ module Kamandar
       if surface == :terminal && !config[:scope_given] && $stdin.tty?
         picked = prompt_scope(config)
         config = config.merge(scope: picked[:scope], project_url: picked[:project_url])
+      end
+
+      if config[:dashboard] && $stdout.tty? && $stdin.tty?
+        return run_dashboard(config)
+      elsif config[:dashboard]
+        $stderr.puts "kamandar: --dashboard needs an interactive terminal; showing plain output."
       end
 
       if surface == :browser && config[:watch_seconds].to_i > 0
@@ -1431,6 +1523,56 @@ module Kamandar
       end
     rescue Interrupt
       $stderr.puts "\nkamandar: watch stopped."
+    end
+
+    # Full-screen Matrix TUI: a digital-rain splash, then the dashboard with a
+    # key loop (r = refresh, q/Ctrl-C = quit). Always restores the screen.
+    def run_dashboard(config, out: $stdout, input: $stdin)
+      out.print DashboardSurface::ENTER_ALT
+      rows, cols = terminal_size(out)
+
+      rain_splash(out, rows: rows, cols: cols)
+
+      buckets = fetch_and_classify(config)
+      loop do
+        rows, cols = terminal_size(out)
+        out.print DashboardSurface.render(buckets, config: config,
+                                                   generated_at: Time.now,
+                                                   rows: rows, cols: cols)
+        out.flush
+        key = read_key(input)
+        break if key.nil? || %w[q Q].include?(key) || key == "" # q / Ctrl-C
+        buckets = fetch_and_classify(config) if %w[r R].include?(key)
+      end
+    rescue GitHub::Error => e
+      out.print DashboardSurface::LEAVE_ALT
+      $stderr.puts "kamandar: #{e.message}"
+      exit 1
+    ensure
+      out.print DashboardSurface::LEAVE_ALT
+    end
+
+    def terminal_size(out)
+      r, c = out.winsize
+      [[r, 6].max, [c, 24].max]
+    rescue StandardError
+      [24, 80]
+    end
+
+    def read_key(input)
+      input.getch
+    rescue StandardError
+      nil
+    end
+
+    def rain_splash(out, rows:, cols:, frames: 22, delay: 0.05)
+      heads = DashboardSurface.init_heads(cols, rows)
+      frames.times do
+        out.print DashboardSurface.rain_frame(cols: cols, rows: rows, heads: heads)
+        out.flush
+        sleep delay
+        heads = DashboardSurface.step_heads(heads, rows)
+      end
     end
 
     # Diagnostic for --statuses: fetch the board and print each issue assigned

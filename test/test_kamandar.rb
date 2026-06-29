@@ -488,6 +488,35 @@ ok "matrix theme keeps content (after stripping)",
    term_matrix.gsub(/\e\[[0-9;]*m/, "").include?("#101 Review me")
 ok "matrix theme upcases bucket titles", term_matrix.include?("REVIEWS YOU OWE")
 
+# -- bonus: full-screen dashboard (digital rain + panels) ---------------------
+DASH = Kamandar::DashboardSurface
+
+# rain_frame: a cols×rows grid that clears+homes, fades green, emits glyphs.
+heads = DASH.init_heads(10, 8)
+frame = DASH.rain_frame(cols: 10, rows: 8, heads: heads.map { 4 })
+ok "rain_frame clears and homes", frame.start_with?("\e[2J\e[H")
+ok "rain_frame has rows-1 row separators", frame.scan("\r\n").size == 7
+ok "rain_frame paints near-white head", frame.include?("\e[1;97m")
+ok "rain_frame fades to dim green trail", frame.include?("\e[2;32m")
+ok "rain_frame draws a glyph", DASH::GLYPHS.any? { |g| frame.include?(g) }
+
+# init_heads / step_heads: one head per column, advances and respawns off-screen.
+ok "init_heads is one per column", DASH.init_heads(12, 8).size == 12
+ok "step_heads advances each head by one", DASH.step_heads([0, 1, 2], 8) == [1, 2, 3]
+ok "step_heads respawns a head that fell off", DASH.step_heads([100], 8).first <= 0
+
+# render: header, footer, green panels, windowed to the row budget.
+dash = DASH.render(buckets, config: config, generated_at: TODAY, rows: 24, cols: 80)
+dash_plain = dash.gsub(/\e\[[0-9;]*m/, "")
+ok "dashboard clears and homes", dash.start_with?("\e[2J\e[H")
+ok "dashboard shows the brand", dash_plain.include?("KAMANDAR")
+ok "dashboard upcases bucket titles", dash_plain.include?("REVIEWS YOU OWE")
+ok "dashboard keeps content (after stripping)", dash_plain.include?("#101 Review me")
+ok "dashboard draws panel borders", dash.include?("╔") && dash.include?("╚")
+ok "dashboard footer offers quit", dash_plain.include?("[q] quit")
+ok "dashboard uses bright green", dash.include?("\e[1;92m")
+check "dashboard fills exactly rows lines", dash.split("\r\n").size, 24
+
 # =============================================================================
 # Issue+PR scope (global/org/repo): assigned issues classified by linked PR
 # =============================================================================

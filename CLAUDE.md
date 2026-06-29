@@ -11,6 +11,7 @@ Kamandar — a personal, single-user GitHub "command center" CLI. One command pr
 ```sh
 ruby test/test_kamandar.rb          # run the full acceptance suite (zero network)
 ruby lib/kamandar.rb                # run CLI, terminal output (needs env vars below)
+ruby lib/kamandar.rb --dashboard    # full-screen Matrix TUI (rain splash; r=refresh, q=quit)
 ruby lib/kamandar.rb --browser      # render + open static HTML page
 ruby lib/kamandar.rb -b --watch 60  # live browser tab, re-fetch every 60s
 ```
