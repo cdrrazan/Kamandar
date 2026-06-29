@@ -1267,6 +1267,17 @@ module Kamandar
 
     SCOPE_MODES = %w[global org repo project].freeze
 
+    # Short sidebar tab labels. The panel headings keep the full descriptive
+    # title (and it's the navitem's hover tooltip); the narrow sidebar shows
+    # these so nothing truncates. Falls back to the full title if unmapped.
+    SHORT_LABELS = {
+      reviews_owed: "Reviews", wip: "Building", assigned_not_started: "Not started",
+      in_review: "In review", in_qa: "In QA", blocked: "Blocked",
+      stale: "Gone quiet", forgot_reviewer: "No reviewer",
+      assigned_todo: "Not started", assigned_wip: "PR in draft",
+      assigned_review: "PR in review", assigned_no_reviewer: "PR, no reviewer"
+    }.freeze
+
     # Google Sans webfont. Served pages have network access (live localhost),
     # so a CDN link is fine here — unlike BrowserSurface, which must stay
     # self-contained for offline file:// use. Falls back to the system stack
@@ -1363,9 +1374,10 @@ module Kamandar
         checked = i.zero? ? " checked" : ""
         radios << %(<input class="tabr" type="radio" name="kt" id="kt-#{i}"#{checked}>)
         cls = rows.empty? ? "count z" : "count"
-        navs << %(<label class="navitem" for="kt-#{i}" style="--c:#{meta[:color]}">) +
+        short = SHORT_LABELS[key] || title
+        navs << %(<label class="navitem" for="kt-#{i}" style="--c:#{meta[:color]}" title="#{esc.call(title)}">) +
                 %(<span class="icon">#{meta[:icon]}</span>) +
-                %(<span class="navtitle">#{esc.call(title)}</span>) +
+                %(<span class="navtitle">#{esc.call(short)}</span>) +
                 %(<span class="#{cls}">#{rows.size}</span></label>)
         body =
           if rows.empty?

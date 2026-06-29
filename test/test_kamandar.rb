@@ -611,6 +611,10 @@ ok "tab_css scales to bucket count", SURF.tab_css(3).scan("display:block").size 
 ok "server page has a top nav", page.include?(%(<nav class="topbar">)) &&
                                 page.include?(%(<span class="brandname">Kamandar</span>))
 ok "server page has a sidebar header", page.include?(%(<span class="side-title">Your queue</span>))
+# sidebar tabs use short labels; the full title stays on the panel + tooltip.
+ok "sidebar tab uses a short label", page.include?(%(<span class="navtitle">Reviews</span>))
+ok "navitem keeps full title as tooltip", page.include?(%(title="Reviews you owe"))
+ok "panel heading keeps full title", page.include?(%(<span class="htitle">Reviews you owe</span>))
 ok "server page has a footer", page.include?(%(<footer class="foot">)) &&
                                page.include?("Kamandar v#{Kamandar::VERSION}")
 ok "footer shows the generated time", page.include?("generated ")
