@@ -587,8 +587,15 @@ page = SURF.page(buckets, config: config.merge(token: SECRET),
                           generated_at: TODAY, mode: "org", name: "Acme", poll: 60)
 ok "server page is HTML", page.start_with?("<!DOCTYPE html>")
 ok "server page reuses bucket content", page.include?("#101") && page.include?("Review me")
-ok "server page has a scope control", page.include?(%(<select name="mode")) &&
-                                      page.include?(%(<option value="org" selected))
+ok "server page has a scope control", page.include?(%(role="radiogroup")) &&
+                                      page.include?(%(<input class="segr" type="radio" name="mode" id="m-org" value="org" checked>))
+# scope fields are hidden by default and revealed by CSS :has() per scope.
+ok "controls hide scope fields by default", page.include?(".controls .field{display:none}")
+ok "controls reveal name for org/repo", page.include?(".controls:has(#m-org:checked) .f-name")
+ok "controls reveal project url for project", page.include?(".controls:has(#m-project:checked) .f-proj")
+# the toolbar (controls row) lives below the nav, inside the sticky header.
+ok "controls live in a toolbar below the nav",
+   page.index(%(<nav class="topbar">)) < page.index(%(<div class="toolbar">))
 ok "server page has a refresh control", page.include?("↻")
 ok "server page reflects poll interval", page.include?(%(http-equiv="refresh" content="60"))
 ok "server page loads the Google Sans webfont",

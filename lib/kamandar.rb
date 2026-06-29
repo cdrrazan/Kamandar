@@ -1308,9 +1308,13 @@ module Kamandar
 
       refresh = poll.to_i > 0 ? %(<meta http-equiv="refresh" content="#{poll.to_i}">) : ""
 
-      options = SCOPE_MODES.map do |m|
-        sel = m == mode ? " selected" : ""
-        %(<option value="#{m}"#{sel}>#{m}</option>)
+      # Scope picker as a radio segmented control (not a <select>) so CSS :has()
+      # can reveal only the fields a scope needs — no JavaScript. The server
+      # keeps the chosen scope checked across reloads.
+      segments = SCOPE_MODES.map do |m|
+        ck = m == mode ? " checked" : ""
+        %(<input class="segr" type="radio" name="mode" id="m-#{m}" value="#{m}"#{ck}>) +
+          %(<label class="seglabel" for="m-#{m}">#{m}</label>)
       end.join
 
       chips = [
@@ -1333,23 +1337,27 @@ module Kamandar
         <style>#{BrowserSurface.css}#{extra_css}#{tab_rules}</style>
         </head>
         <body>
-        <nav class="topbar">
-          <div class="nav-wrap">
-            <a class="brand" href="/"><span class="bow">\u{1F3F9}</span> <span class="brandname">Kamandar</span></a>
-            <div class="meta">
-              #{chips}
+        <header class="appbar">
+          <nav class="topbar">
+            <div class="nav-wrap">
+              <a class="brand" href="/"><span class="bow">\u{1F3F9}</span> <span class="brandname">Kamandar</span></a>
+              <div class="meta">
+                #{chips}
+              </div>
+              <a class="ghlink" href="#{REPO_URL}" target="_blank" rel="noopener" title="Kamandar on GitHub">#{GH_ICON}</a>
             </div>
+          </nav>
+          <div class="toolbar">
             <form class="controls" method="get" action="/">
-              <select name="mode" aria-label="Scope">#{options}</select>
-              <input type="text" name="name" value="#{esc.call(name)}" placeholder="org or owner/name">
-              <input type="text" name="project_url" value="#{esc.call(project_url)}" placeholder="project board URL">
-              <input type="number" name="poll" value="#{poll.to_i}" min="0" step="5" title="auto-refresh seconds (0 = off)" class="poll">
+              <span class="seg" role="radiogroup" aria-label="Scope">#{segments}</span>
+              <input class="field f-name" type="text" name="name" value="#{esc.call(name)}" placeholder="org or owner/name">
+              <input class="field f-proj" type="text" name="project_url" value="#{esc.call(project_url)}" placeholder="project board URL">
+              <input class="field f-poll" type="number" name="poll" value="#{poll.to_i}" min="0" step="5" title="auto-refresh seconds (0 = off)" placeholder="poll s">
               <button type="submit">Apply</button>
               <a class="refresh" href="#{esc.call(self_link(mode, name, project_url, poll))}" title="Refresh now">↻</a>
             </form>
-            <a class="ghlink" href="#{REPO_URL}" target="_blank" rel="noopener" title="Kamandar on GitHub">#{GH_ICON}</a>
           </div>
-        </nav>
+        </header>
         #{app}
         <footer class="foot">
           <div class="foot-wrap">
@@ -1467,29 +1475,43 @@ module Kamandar
     def extra_css
       <<~CSS
         body{font-family:"Google Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;display:flex;flex-direction:column;min-height:100vh;background:radial-gradient(1100px 380px at 50% -160px,color-mix(in srgb,var(--accent) 12%,transparent),transparent),var(--bg);background-attachment:fixed}
-        /* top nav — frosted glass, sticky */
-        .topbar{position:sticky;top:0;z-index:10;border-bottom:1px solid var(--border);background:color-mix(in srgb,var(--bg) 80%,transparent);backdrop-filter:saturate(1.5) blur(12px);-webkit-backdrop-filter:saturate(1.5) blur(12px)}
+        /* sticky app header — frosted glass; nav row + toolbar row */
+        .appbar{position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--bg) 80%,transparent);backdrop-filter:saturate(1.5) blur(12px);-webkit-backdrop-filter:saturate(1.5) blur(12px);border-bottom:1px solid var(--border)}
         .nav-wrap{max-width:70%;margin:0 auto;padding:12px 16px;display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
         .brand{display:flex;align-items:center;gap:8px;text-decoration:none;font-weight:800;font-size:1.18rem;letter-spacing:-.01em;color:var(--fg)}
         .brand .bow{font-size:1.2rem}
         .brandname{background:linear-gradient(90deg,var(--accent),#8250df);-webkit-background-clip:text;background-clip:text;color:transparent}
         .topbar .meta{margin:0}
-        .topbar .controls{margin:0 0 0 auto}
-        .controls{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-        .controls select,.controls input,.controls button{font:inherit;font-size:.82rem;background:var(--card);color:var(--fg);border:1px solid var(--border);border-radius:8px;padding:6px 10px}
-        .controls input{min-width:150px}
-        .controls .poll{min-width:70px;width:78px}
+        .nav-wrap .ghlink{margin-left:auto}
+        /* toolbar row (below the nav) */
+        .toolbar{border-top:1px solid var(--border)}
+        .controls{max-width:70%;margin:0 auto;padding:10px 16px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+        .controls input,.controls button{font:inherit;font-size:.82rem;background:var(--card);color:var(--fg);border:1px solid var(--border);border-radius:8px;padding:6px 10px}
+        .controls .field{min-width:160px}
+        .controls .f-poll{min-width:70px;width:90px}
         .controls button{cursor:pointer;font-weight:600;border-color:var(--accent);color:var(--accent);transition:background .1s ease,color .1s ease}
         .controls button:hover{background:var(--accent);color:#fff}
         .controls .refresh{text-decoration:none;font-size:1.1rem;line-height:1;color:var(--muted);border:1px solid var(--border);border-radius:8px;padding:5px 10px}
         .controls .refresh:hover{color:var(--accent);border-color:var(--accent)}
+        /* segmented scope control (radios styled as a pill group) */
+        .seg{display:inline-flex;background:var(--card);border:1px solid var(--border);border-radius:9px;padding:2px;gap:2px}
+        .segr{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+        .seglabel{cursor:pointer;font-size:.82rem;font-weight:600;color:var(--muted);padding:5px 11px;border-radius:7px;text-transform:capitalize}
+        .seglabel:hover{color:var(--fg)}
+        .segr:checked+.seglabel{background:var(--accent);color:#fff}
+        /* reveal only the fields the chosen scope needs — pure CSS, no JS */
+        .controls .field{display:none}
+        .controls:has(#m-org:checked) .f-name,
+        .controls:has(#m-repo:checked) .f-name,
+        .controls:has(#m-project:checked) .f-proj,
+        .controls:has(.segr:checked:not(#m-global)) .f-poll{display:inline-block}
         .ghlink{display:inline-flex;align-items:center;gap:6px;color:var(--muted);text-decoration:none;border:1px solid var(--border);border-radius:8px;padding:6px 9px;transition:color .1s ease,border-color .1s ease}
         .ghlink:hover{color:var(--fg);border-color:var(--accent)}
         .ghmark{display:block}
         /* layout: sidebar + main content */
         .app{flex:1 0 auto;display:flex;gap:24px;width:100%;max-width:70%;margin:0 auto;padding:24px 16px 48px;align-items:flex-start}
         .tabr{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
-        .sidebar{position:sticky;top:84px;flex:none;width:248px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px;box-shadow:var(--shadow)}
+        .sidebar{position:sticky;top:120px;flex:none;width:248px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px;box-shadow:var(--shadow)}
         .side-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:2px 4px 11px;border-bottom:1px solid var(--border)}
         .side-title{font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.09em;color:var(--muted)}
         .sidebar nav{display:flex;flex-direction:column;gap:3px;margin-top:8px}
