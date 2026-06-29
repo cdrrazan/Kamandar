@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256" role="img" aria-label="Kamandar">
+  <title>Kamandar</title>
+  <!-- bow -->
+  <path d="M100 32 A104 104 0 0 0 100 224" fill="none" stroke="#2a3140" stroke-width="16" stroke-linecap="round"/>
+  <!-- bowstring -->
+  <path d="M100 32 L100 224" fill="none" stroke="#2a3140" stroke-width="7" stroke-linecap="round"/>
+  <!-- arrow shaft -->
+  <path d="M70 128 L210 128" fill="none" stroke="#5b54e6" stroke-width="11" stroke-linecap="round"/>
+  <!-- arrowhead -->
+  <path d="M204 110 L238 128 L204 146 Z" fill="#5b54e6"/>
+  <!-- fletching (feathers trailing back toward the nock) -->
+  <path d="M88 128 L64 114" fill="none" stroke="#5b54e6" stroke-width="9" stroke-linecap="round"/>
+  <path d="M88 128 L64 142" fill="none" stroke="#5b54e6" stroke-width="9" stroke-linecap="round"/>
+</svg>
