@@ -387,6 +387,12 @@ module Kamandar
     #   "project"          -> repos present on the PROJECT_URL board
     # Anything unrecognized, or org/repo without a usable value, falls back to
     # global so the tool always runs.
+    # True when `s` looks like "owner/name" (no spaces, exactly one slash with
+    # non-empty sides).
+    def valid_repo?(s)
+      !!(s.to_s.strip =~ %r{\A[^/[:space:]]+/[^/[:space:]]+\z})
+    end
+
     def parse_scope(raw, project_org: nil)
       key, _, val = raw.to_s.strip.partition(":")
       val = val.strip
@@ -1348,9 +1354,16 @@ module Kamandar
           name = (input.gets || "").strip
           name.empty? ? { mode: "global" } : { mode: "org", org: name }
         when "3"
-          out.print "Repo (owner/name): "
-          name = (input.gets || "").strip
-          name.empty? ? { mode: "global" } : { mode: "repo", repo: name }
+          # Re-prompt until "owner/name"; blank/Enter (or EOF) cancels to global.
+          loop do
+            out.print "Repo (owner/name): "
+            line = input.gets
+            break({ mode: "global" }) if line.nil? # EOF
+            name = line.strip
+            break({ mode: "global" }) if name.empty? # cancel
+            break({ mode: "repo", repo: name }) if Engine.valid_repo?(name)
+            out.puts "kamandar: repo must be owner/name (e.g. acme/api). Try again, or press Enter for global."
+          end
         when "4"
           # Re-prompt on a malformed URL; blank/Enter (or EOF) cancels to global.
           entered = config[:project_url].to_s.strip

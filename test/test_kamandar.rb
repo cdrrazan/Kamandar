@@ -303,7 +303,20 @@ check "picker: Enter -> global",        pick("\n").first[:scope],            { m
 check "picker: '1' -> global",          pick("1\n").first[:scope],           { mode: "global" }
 check "picker: '2' + name -> org",      pick("2\nRecognize\n").first[:scope], { mode: "org", org: "Recognize" }
 check "picker: '2' + blank -> global",  pick("2\n\n").first[:scope],         { mode: "global" }
-check "picker: '3' + name -> repo",     pick("3\nacme/api\n").first[:scope], { mode: "repo", repo: "acme/api" }
+check "picker: '3' + owner/name -> repo", pick("3\nacme/api\n").first[:scope], { mode: "repo", repo: "acme/api" }
+
+# valid_repo? guards the "owner/name" shape
+ok "valid_repo? accepts owner/name",  E.valid_repo?("Recognize/recognize")
+ok "valid_repo? rejects bare name",   !E.valid_repo?("recognize")
+ok "valid_repo? rejects trailing slash", !E.valid_repo?("acme/")
+ok "valid_repo? rejects spaces",      !E.valid_repo?("acme / api")
+
+# '3' re-prompts on a bare name (no slash), then accepts owner/name
+res_repo, repo_text = pick("3\nrecognize\nRecognize/recognize\n")
+check "picker: '3' bare name then owner/name -> repo",
+      res_repo[:scope], { mode: "repo", repo: "Recognize/recognize" }
+ok "picker: '3' shows a retry message on bad repo", repo_text.include?("owner/name")
+check "picker: '3' bad repo then blank -> global", pick("3\nrecognize\n\n").first[:scope], { mode: "global" }
 check "picker: '4' with PROJECT_URL set -> project",
       pick("4\n", project_url: "https://github.com/orgs/Recognize/projects/10").first[:scope], { mode: "project" }
 
