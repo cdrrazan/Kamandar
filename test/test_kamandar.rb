@@ -591,6 +591,10 @@ ok "server page has a scope control", page.include?(%(<select name="mode")) &&
                                       page.include?(%(<option value="org" selected))
 ok "server page has a refresh control", page.include?("↻")
 ok "server page reflects poll interval", page.include?(%(http-equiv="refresh" content="60"))
+ok "server page loads the Google Sans webfont",
+   page.include?("fonts.googleapis.com/css2?family=Google+Sans") &&
+   page.include?(%(<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>))
+ok "server page applies Google Sans in CSS", page.include?(%(font-family:"Google Sans"))
 ok "server page NEVER contains the token", !page.include?(SECRET)
 
 # error_page: same chrome, no token, still renders a retry link.

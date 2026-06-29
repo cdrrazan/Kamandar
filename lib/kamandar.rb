@@ -1267,6 +1267,16 @@ module Kamandar
 
     SCOPE_MODES = %w[global org repo project].freeze
 
+    # Google Sans webfont. Served pages have network access (live localhost),
+    # so a CDN link is fine here — unlike BrowserSurface, which must stay
+    # self-contained for offline file:// use. Falls back to the system stack
+    # in BrowserSurface.css if the font fails to load.
+    FONT_LINKS = <<~HTML.chomp
+      <link rel="preconnect" href="https://fonts.googleapis.com">
+      <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+      <link href="https://fonts.googleapis.com/css2?family=Google+Sans:ital,opsz,wght@0,17..18,400..700;1,17..18,400..700&display=swap" rel="stylesheet">
+    HTML
+
     # The full live page: header chips + a control bar + the bucket sections.
     # `scope`/`name`/`project_url`/`poll` reflect the current request so the
     # form re-renders with the user's selection.
@@ -1300,6 +1310,7 @@ module Kamandar
         <meta name="viewport" content="width=device-width, initial-scale=1">
         #{refresh}
         <title>Kamandar — @#{esc.call(config[:login])}</title>
+        #{FONT_LINKS}
         <style>#{BrowserSurface.css}#{extra_css}</style>
         </head>
         <body>
@@ -1335,7 +1346,7 @@ module Kamandar
         <!DOCTYPE html>
         <html lang="en"><head><meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Kamandar — error</title><style>#{BrowserSurface.css}#{extra_css}</style></head>
+        <title>Kamandar — error</title>#{FONT_LINKS}<style>#{BrowserSurface.css}#{extra_css}</style></head>
         <body><header><div class="wrap">
           <h1><span class="bow">\u{1F3F9}</span> Kamandar</h1>
         </div></header>
@@ -1360,6 +1371,7 @@ module Kamandar
     # A few rules layered on top of BrowserSurface.css for the control bar.
     def extra_css
       <<~CSS
+        body{font-family:"Google Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
         .controls{margin:12px 0 0;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
         .controls select,.controls input,.controls button{font:inherit;font-size:.82rem;background:var(--card);color:var(--fg);border:1px solid var(--border);border-radius:8px;padding:6px 10px}
         .controls input{min-width:160px}
