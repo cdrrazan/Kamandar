@@ -335,6 +335,23 @@ _, prompt_text = pick("1\n")
 ok "picker prompt lists all four modes",
    %w[global org repo project].all? { |m| prompt_text.include?(m) }
 
+# -- empty-result hint --------------------------------------------------------
+def warn_text(scope, buckets)
+  out = StringIO.new
+  Kamandar::CLI.warn_if_empty({ scope: scope }, buckets, out: out)
+  out.string
+end
+
+ok "warn_if_empty: org + all empty -> hint",
+   warn_text({ mode: "org", org: "Recognize" }, { reviews_owed: [], stale: [] })
+     .include?("double-check the name")
+ok "warn_if_empty: repo + all empty -> hint",
+   !warn_text({ mode: "repo", repo: "o/r" }, { reviews_owed: [] }).empty?
+ok "warn_if_empty: org but a bucket has rows -> no hint",
+   warn_text({ mode: "org", org: "Recognize" }, { reviews_owed: [{ number: 1 }], stale: [] }).empty?
+ok "warn_if_empty: global + all empty -> no hint (name not the cause)",
+   warn_text({ mode: "global" }, { reviews_owed: [], stale: [] }).empty?
+
 # =============================================================================
 # URL parse
 # =============================================================================

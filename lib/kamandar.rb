@@ -1244,11 +1244,13 @@ module Kamandar
         path = BrowserSurface.emit(html)
         $stderr.puts "kamandar: wrote #{path}"
         warn_no_project(config)
+        warn_if_empty(config, buckets)
       else
         buckets = with_spinner("Fetching your GitHub queue…") { fetch_and_classify(config) }
         output = TerminalSurface.render(buckets, config: config, generated_at: Time.now)
         TerminalSurface.emit(output)
         warn_no_project(config)
+        warn_if_empty(config, buckets)
       end
     rescue GitHub::Error => e
       $stderr.puts "kamandar: #{e.message}"
@@ -1454,6 +1456,15 @@ module Kamandar
       return unless Engine.scope_mode(config) == "project"
       return if config[:project_url] && !config[:project_url].empty?
       $stderr.puts "kamandar: PROJECT_URL unset — board buckets will be empty."
+    end
+
+    # When a name-based scope (org/repo) returns nothing at all, the name is the
+    # likely culprit — surface that instead of leaving the user guessing.
+    def warn_if_empty(config, buckets, out: $stderr)
+      return unless %w[org repo project].include?(Engine.scope_mode(config))
+      return unless buckets.values.all? { |rows| (rows || []).empty? }
+      out.puts "kamandar: everything is empty for #{Engine.scope_label(config[:scope])} — " \
+               "double-check the name is spelled correctly and your token can access it."
     end
   end
 end
