@@ -5,9 +5,11 @@
 ### Take aim at your GitHub work queue.
 
 ***Kamandar*** (کمان‌دار) is Persian for *archer* — one who draws the bow and
-finds the target. A personal, **serverless** GitHub command center: one command
-shows what you owe, what you're building, what's assigned, and what's gone
-quiet — in your terminal or a self-contained browser page.
+finds the target. A personal GitHub command center: one command shows what you
+owe, what you're building, what's assigned, and what's gone quiet — as a
+colored terminal report, a full-screen Matrix dashboard, a self-contained
+browser page, or a live local web app. No backend; the only network listener is
+the opt-in `--serve`, bound to localhost.
 
 <br>
 
@@ -23,15 +25,16 @@ quiet — in your terminal or a self-contained browser page.
 ---
 
 ```text
-Kamandar for @you  —  2026-06-22 09:14  (business days)
+🏹 Kamandar  @you  —  2026-06-22 09:14  (business days)  [global]
 ========================================================================
 
 📥 Reviews you owe (2)
 ----------------------
   #482 Tighten retry backoff  (acme/api)
     https://github.com/acme/api/pull/482
-  #477 Cache token introspection  (acme/web)
-    https://github.com/acme/web/pull/477
+
+  #8   Cache token introspection  (acme/web)
+    https://github.com/acme/web/pull/8
 
 🔨 Currently building (WIP) (1)
 -------------------------------
@@ -43,6 +46,11 @@ Kamandar for @you  —  2026-06-22 09:14  (business days)
   #501 Add billing webhook  (acme/api)  — 3 business days since you handed off
     https://github.com/acme/api/pull/501
 ```
+
+> On a terminal this is colored (a 256-color palette tuned to stay legible on
+> **both light and dark** backgrounds); `#numbers` align within each bucket and
+> entries are spaced for scanning. Piped or redirected, it's plain text with no
+> ANSI.
 
 ---
 
@@ -119,7 +127,7 @@ ln -s "$PWD/lib/kamandar.rb" ~/.local/bin/kamandar
 ```text
 Kamandar/
 ├── lib/
-│   └── kamandar.rb     # engine + both surfaces (single file, stdlib only)
+│   └── kamandar.rb     # engine + all surfaces + local server (single file, stdlib only)
 ├── test/
 │   └── test_kamandar.rb  # acceptance tests — zero network, 175 cases
 ├── README.md
@@ -203,19 +211,25 @@ browser page.
 *name* for `org`/`repo`; you never type the mode itself:
 
 ```text
-Scope for PR buckets:
-  1) global   — account-wide (default)
-  2) org      — a single organization
-  3) repo     — a single repository
-  4) project  — PRs that are items on a GitHub project board
-Select 1-4 (Enter = global):
+🏹 Kamandar — which GitHub work should I show?
+Pick how wide to look. Press Enter to keep the default.
+
+  1  global   Every repo your account touches      · default
+  2  org      A single organization                · e.g. Recognize
+  3  repo     A single repository                  · e.g. acme/api
+  4  project  A GitHub project board               · paste its URL
+
+Choose 1–4 (Enter = global):
 ```
 
-Pick `org`/`repo` and it asks for the name; pick `project` and — if no
-`PROJECT_URL` is set — it asks for the board URL right there (no need to export
-anything first). Press Enter, or give a blank/invalid value, and it defaults to
-**global**. The prompt is skipped when a scope is already set, when stdin isn't a
-terminal (cron/pipes), or in browser mode — so nothing ever blocks.
+Pick `org`/`repo` and it asks for the name (with the expected format and an
+example); pick `project` and — if no `PROJECT_URL` is set — it asks for the
+board URL right there (no need to export anything first). A bad `owner/name` or
+board URL re-prompts; press Enter, or give a blank value, and it defaults to
+**global**. On an interactive terminal the prompt is colored; piped, it's plain.
+The prompt is skipped when a scope is already set, when stdin isn't a terminal
+(cron/pipes), in `--serve` (the web app picks scope in-page), or in browser
+mode — so nothing ever blocks.
 
 ---
 
@@ -230,16 +244,24 @@ flowchart LR
     GH["GitHub GraphQL API"] -->|"1 aliased call + paginated board"| FETCH["Fetch layer"]
     FETCH --> ENGINE["Engine (pure)<br/>time math · classification"]
     ENGINE --> BUCKETS["Buckets<br/>(plain hash)"]
-    BUCKETS --> TERM["🖥️ Terminal surface<br/>plain text · cron-friendly"]
-    BUCKETS --> BROWSER["🌐 Browser surface<br/>static offline HTML"]
+    BUCKETS --> TERM["🖥️ Terminal<br/>plain/color · cron-friendly"]
+    BUCKETS --> DASH["🟩 Dashboard<br/>full-screen Matrix TUI"]
+    BUCKETS --> BROWSER["🌐 Browser<br/>static offline HTML"]
+    BUCKETS --> SERVE["🔌 Server (--serve)<br/>localhost web app"]
 ```
 
 - **Engine** — pure functions (GraphQL building, time math, classification),
   unit-testable with zero network.
-- **Buckets** — a plain hash the engine returns.
-- **Surface** — one tiny contract (`render(buckets, ...) -> String` + an
-  `emit`). Two implementations today (terminal, browser); adding email or a
-  menubar app later requires **no engine change**.
+- **Buckets** — a plain hash the engine returns. The set depends on scope
+  (board-driven for `project`, issue+PR-driven otherwise).
+- **Surface** — one tiny contract (`render`/`page(buckets, ...) -> String` + an
+  `emit`). Four implementations today: terminal, dashboard, browser, and the
+  `--serve` web app (which reuses the browser surface's CSS/cards). Adding email
+  or a menubar app later requires **no engine change**.
+- **Server** — the only *inbound* network layer: a minimal stdlib `TCPServer`
+  HTTP/1.1 loop for `--serve`, bound to `127.0.0.1`. Pure helpers (request
+  parsing, response framing, scope resolution) are unit-tested; the accept loop
+  lives in the CLI.
 
 Everything is guarded by `if __FILE__ == $PROGRAM_NAME` so the test suite can
 `require` the file with zero network and no ENV reads.
@@ -248,19 +270,43 @@ Everything is guarded by `if __FILE__ == $PROGRAM_NAME` so the test suite can
 
 ## 🖥️ Surfaces
 
-The same classified buckets feed both surfaces.
+The same classified buckets feed every surface — no surface re-queries or
+re-classifies.
 
 ### Terminal (default)
 
 Grouped by bucket with per-bucket emoji and color **when stdout is a terminal**.
-Piped or redirected (cron, `| mail`), it automatically falls back to plain text
-with no ANSI — so captured output stays clean.
+Colors use a 256-color palette tuned to stay readable on **both light and dark**
+backgrounds; `#numbers` are aligned per bucket and entries are spaced for
+scanning. Piped or redirected (cron, `| mail`), it automatically falls back to
+plain text with no ANSI — so captured output stays clean.
 
 Prefer a retro look? `THEME=matrix ruby lib/kamandar.rb` (or `--theme matrix`)
 draws a green-on-black boxed dashboard. It's TTY-only — piped output is still
 plain text.
 
-### Browser (serverless)
+### Dashboard (`--dashboard`)
+
+A full-screen **Matrix TUI**: a digital-rain splash, then live green panels of
+every bucket. Keys: `r` refetches, `q` (or Ctrl-C) quits. It takes over the
+alt-screen buffer and always restores it on exit. Needs an interactive TTY
+(stdout **and** stdin) — pipes/cron fall back to plain output with a notice.
+
+### Live web app (`--serve`)
+
+A **localhost-only** web page served by a minimal stdlib `TCPServer` — the
+graphical, app-like surface. Switch scope, refresh, and set an auto-poll
+interval right in the page; it re-fetches server-side per request. Bound to
+`127.0.0.1` only, `--port N` (or `PORT`) to change the port, and — like every
+surface — the token never reaches any response. A fetch blip renders an error
+page instead of dropping the server.
+
+```sh
+ruby lib/kamandar.rb --serve            # http://127.0.0.1:4567
+ruby lib/kamandar.rb --serve --port 8080
+```
+
+### Browser (offline file)
 
 Renders **one self-contained HTML document** (inline CSS, no external/CDN
 resources, works offline over `file://`) to a stable path
@@ -352,6 +398,9 @@ managers (Jira, Linear) is sketched in [V2.md](V2.md).
 - Browser mode is a **static snapshot** rendered in-process: no client-side
   GitHub calls, no live data except via `--watch` re-runs. The token never
   reaches the page.
+- `--serve` is a **single-user, localhost-only** convenience: plain HTTP bound
+  to `127.0.0.1`, no auth, one request at a time. Don't expose it to a network
+  or proxy it to a public address — see [SECURITY.md](SECURITY.md).
 - Single user, single token, no multi-tenant concerns.
 
 ---
