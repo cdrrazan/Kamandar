@@ -618,6 +618,9 @@ ok "panel heading keeps full title", page.include?(%(<span class="htitle">Review
 ok "server page has a footer", page.include?(%(<footer class="foot">)) &&
                                page.include?("Kamandar v#{Kamandar::VERSION}")
 ok "footer shows the generated time", page.include?("generated ")
+# GitHub repo link appears in both the nav and the footer.
+ok "page links to the GitHub repo", page.scan(%(href="#{Kamandar::ServerSurface::REPO_URL}")).size >= 2
+ok "GitHub link opens in a new tab safely", page.include?(%(class="ghlink" href="#{Kamandar::ServerSurface::REPO_URL}" target="_blank" rel="noopener"))
 
 # error_page: same chrome, no token, still renders a retry link.
 errp = SURF.error_page("boom", config: config.merge(token: SECRET))
