@@ -1471,7 +1471,7 @@ module Kamandar
           # selected tab: fill with the bucket color, flip text/badge to white
           %(#{on}{background:var(--c);border-color:var(--c);box-shadow:var(--shadow)}) +
           %(#{on} .navtitle{color:#fff}) +
-          %(#{on} .count{background:rgba(255,255,255,.26);color:#fff})
+          %(#{on} .count{background:rgba(255,255,255,.26);color:#fff;border:1px solid rgba(255,255,255,.85)})
       end.join("\n")
     end
 
