@@ -1469,7 +1469,7 @@ module Kamandar
         body{font-family:"Google Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;display:flex;flex-direction:column;min-height:100vh;background:radial-gradient(1100px 380px at 50% -160px,color-mix(in srgb,var(--accent) 12%,transparent),transparent),var(--bg);background-attachment:fixed}
         /* top nav — frosted glass, sticky */
         .topbar{position:sticky;top:0;z-index:10;border-bottom:1px solid var(--border);background:color-mix(in srgb,var(--bg) 80%,transparent);backdrop-filter:saturate(1.5) blur(12px);-webkit-backdrop-filter:saturate(1.5) blur(12px)}
-        .nav-wrap{max-width:1320px;margin:0 auto;padding:12px 16px;display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
+        .nav-wrap{max-width:70%;margin:0 auto;padding:12px 16px;display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
         .brand{display:flex;align-items:center;gap:8px;text-decoration:none;font-weight:800;font-size:1.18rem;letter-spacing:-.01em;color:var(--fg)}
         .brand .bow{font-size:1.2rem}
         .brandname{background:linear-gradient(90deg,var(--accent),#8250df);-webkit-background-clip:text;background-clip:text;color:transparent}
@@ -1487,7 +1487,7 @@ module Kamandar
         .ghlink:hover{color:var(--fg);border-color:var(--accent)}
         .ghmark{display:block}
         /* layout: sidebar + main content */
-        .app{flex:1 0 auto;display:flex;gap:24px;width:100%;max-width:1320px;margin:0 auto;padding:24px 16px 48px;align-items:flex-start}
+        .app{flex:1 0 auto;display:flex;gap:24px;width:100%;max-width:70%;margin:0 auto;padding:24px 16px 48px;align-items:flex-start}
         .tabr{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
         .sidebar{position:sticky;top:84px;flex:none;width:248px;background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px;box-shadow:var(--shadow)}
         .side-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:2px 4px 11px;border-bottom:1px solid var(--border)}
@@ -1503,7 +1503,7 @@ module Kamandar
         .navitem:focus-within{outline:2px solid var(--accent);outline-offset:2px}
         /* footer */
         .foot{flex-shrink:0;border-top:1px solid var(--border);background:var(--card)}
-        .foot-wrap{max-width:1320px;margin:0 auto;padding:18px 16px 28px;display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;color:var(--muted);font-size:.78rem}
+        .foot-wrap{max-width:70%;margin:0 auto;padding:18px 16px 28px;display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;color:var(--muted);font-size:.78rem}
         .foot .fbrand{display:flex;align-items:center;gap:6px;font-weight:700;color:var(--fg)}
         .foot .dot{opacity:.45}
         .foot .grow{flex:1 1 auto}
