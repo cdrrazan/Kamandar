@@ -126,9 +126,16 @@ cp ~/.config/kamandar/config .env   # seed the daemon's env (token + login + POR
 ./service/uninstall-service.sh   # stop & remove the service
 ```
 
-The agent runs `kamandar --serve --no-open` (headless, `127.0.0.1` only) with
+The agent runs `kamandar --serve --no-open --tunnel` (headless) with
 `KAMANDAR_CONFIG` pointed at the repo `.env`. `.env` holds your token, so it's
 git-ignored — never commit it.
+
+The Ruby server still binds `127.0.0.1` only; the `--tunnel` child runs
+`cloudflared tunnel run kamandar` and publishes it at the hostname in
+`~/.cloudflared/config.yml` (e.g. `kamandar.byaru.com`). **Put Cloudflare Access
+in front of that hostname** — the page is your live GitHub queue, backed by a
+PAT. Don't want it public? Drop `--tunnel` from the plist's `ProgramArguments`
+and re-run the installer for a localhost-only daemon.
 
 > Prefer not to install? Everything also runs in place as `ruby lib/kamandar.rb …`.
 

@@ -2267,6 +2267,10 @@ module Kamandar
     # SECURITY: binds 127.0.0.1 only, and the token never reaches any response.
     def run_server(config, host: Server::HOST, open: true)
       tunnel_pid = nil
+      # launchd stops the service with SIGTERM; Ruby's default TERM exits without
+      # running `ensure`, which would orphan the cloudflared child. Route TERM
+      # through the same Interrupt path as Ctrl-C so stop_tunnel always reaps it.
+      trap("TERM") { raise Interrupt }
       port   = config[:port].to_i
       port   = Server::DEFAULT_PORT if port <= 0
       server = TCPServer.new(host, port) # binds 127.0.0.1 — raises EADDRINUSE before any tunnel starts

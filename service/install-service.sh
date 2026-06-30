@@ -31,6 +31,8 @@ sed -e "s#__RUBY__#$RUBY#g" \
 
 # Reload cleanly: ignore "not loaded" on first run.
 launchctl bootout "$DOMAIN/$LABEL" 2>/dev/null || true
+# Reap any orphaned kamandar tunnel from a hard-killed prior run before respawn.
+pkill -f "cloudflared tunnel run kamandar" 2>/dev/null || true
 launchctl bootstrap "$DOMAIN" "$DEST"
 launchctl enable "$DOMAIN/$LABEL"
 launchctl kickstart -k "$DOMAIN/$LABEL"
