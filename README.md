@@ -1,6 +1,8 @@
 <div align="center">
 
-# 🏹 Kamandar
+<img src="assets/logo-web.png" alt="Kamandar" width="132" />
+
+# Kamandar
 
 ### Take aim at your GitHub work queue.
 
@@ -166,14 +168,17 @@ ln -s "$PWD/lib/kamandar.rb" ~/.local/bin/kamandar
 ```text
 Kamandar/
 ├── lib/
-│   └── kamandar.rb     # engine + all surfaces + local server (single file, stdlib only)
+│   └── kamandar.rb       # engine + all surfaces + local server (single file, stdlib only)
 ├── test/
 │   └── test_kamandar.rb  # acceptance tests — zero network, 254 cases
-├── install.sh             # symlink the CLI onto your PATH (stdlib only)
+├── assets/
+│   ├── logo-web.png      # brand mark (inlined into web surfaces; shown in this README)
+│   └── favicon.ico       # served at /favicon.ico by --serve
+├── install.sh            # symlink the CLI onto your PATH (stdlib only)
 ├── README.md
 ├── CONTRIBUTING.md
 ├── SECURITY.md
-├── V2.md                   # multi-provider roadmap (design only)
+├── V2.md                 # multi-provider roadmap (design only)
 └── LICENSE
 ```
 
@@ -317,6 +322,13 @@ Everything is guarded by `if __FILE__ == $PROGRAM_NAME` so the test suite can
 The same classified buckets feed every surface — no surface re-queries or
 re-classifies.
 
+| Surface | Command | Best for | Network |
+|---|---|:---:|---|
+| 🖥️ **Terminal** | `kamandar` | cron, pipes, quick checks | outbound only |
+| 🟩 **Dashboard** | `kamandar --dashboard` | an ambient TTY status board | outbound only |
+| 🌐 **Browser** | `kamandar --browser` | an offline, shareable HTML snapshot | none (static file) |
+| 🔌 **Live web app** | `kamandar --serve` | an interactive, app-like UI | localhost listener |
+
 ### Terminal (default)
 
 Grouped by bucket with per-bucket emoji and color **when stdout is a terminal**.
@@ -353,8 +365,9 @@ ruby lib/kamandar.rb --serve --demo     # fabricated data, no token (the screens
 The page is a small "command center" UI, and it's **pure HTML + CSS — no
 JavaScript**:
 
-- **Sticky app header** — a frosted top nav (brand, status chips, GitHub repo
-  link) over a **toolbar row** with the scope control. The scope picker is a
+- **Sticky app header** — a frosted top nav (the **bow-and-arrow logo** +
+  wordmark, status chips, GitHub repo link) over a **toolbar row** with the
+  scope control. The scope picker is a
   segmented control; the page shows just what each scope needs — `global` is
   only the picker + **Apply** + **refresh**, while `org`/`repo` reveal the name
   field, `project` reveals the board URL, and any non-global scope reveals the
@@ -369,6 +382,9 @@ JavaScript**:
   a numbered pager (also pure CSS — a hidden radio per page).
 - **Footer** — version, the localhost/stdlib note, repo link, and the
   generated-at time.
+- **Branding** — the logo is **inlined as a data URI** (so it ships inside the
+  HTML, no extra request), and the server answers `GET /favicon.ico` with
+  `assets/favicon.ico` so the browser tab gets the bow-and-arrow icon.
 - Loads the **Google Sans** webfont (the one network asset, allowed here since
   the served page is online), falling back to the system font stack. Tracks
   light/dark via `prefers-color-scheme`.
@@ -523,7 +539,7 @@ and fabricated fixtures — **zero network**.
 ```sh
 ruby test/test_kamandar.rb
 # ...
-# 183 passed, 0 failed
+# 254 passed, 0 failed
 ```
 
 ---
