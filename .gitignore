@@ -1,0 +1,9 @@
+.DS_Store
+
+# Heavy image sources kept local — runtime uses the inlined logo (data URI in
+# lib/kamandar.rb) plus the small derived assets below. Regenerate logo-web.png
+# from the master with:
+#   magick assets/logo.png -fuzz 12% -transparent white -trim -resize x160 assets/logo-web.png
+assets/logo.png
+assets/alt.png
+assets/generated/

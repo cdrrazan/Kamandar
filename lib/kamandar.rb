@@ -1140,6 +1140,12 @@ module Kamandar
   module BrowserSurface
     module_function
 
+    # The Kamandar mark: a small transparent PNG (downscaled from assets/logo.png
+    # via `magick assets/logo.png -fuzz 12% -transparent white -trim -resize x44`)
+    # inlined as a data URI. Keeps every surface self-contained — no external
+    # asset, works offline over file://, carries no secret.
+    LOGO_DATA_URI = "data:image/png;base64,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".freeze
+
     # Per-bucket icon + accent color, keyed by bucket key. `var(--warn)` lets the
     # stale bucket track the warning color across light/dark themes.
     BUCKET_META = {
@@ -1204,7 +1210,7 @@ module Kamandar
         <body>
         <header>
           <div class="wrap">
-            <h1><span class="bow">\u{1F3F9}</span> Kamandar</h1>
+            <h1><img class="bow" src="#{BrowserSurface::LOGO_DATA_URI}" alt=""> Kamandar</h1>
             <div class="meta">
               #{chips}
             </div>
@@ -1269,7 +1275,7 @@ module Kamandar
         header{position:sticky;top:0;z-index:5;background:var(--bg);border-bottom:1px solid var(--border)}
         .wrap{max-width:880px;margin:0 auto;padding:18px 16px 14px}
         h1{margin:0;font-size:1.5rem;display:flex;align-items:center;gap:9px;letter-spacing:-.01em}
-        .bow{font-size:1.35rem}
+        .bow{height:1.6rem;width:auto;vertical-align:-.35rem}
         .meta{margin:11px 0 0;display:flex;flex-wrap:wrap;gap:6px}
         .chip{background:var(--card);border:1px solid var(--border);color:var(--muted);border-radius:999px;font-size:.78rem;padding:3px 10px;font-weight:500;white-space:nowrap}
         .chip.total{border-color:var(--accent);color:var(--accent);font-weight:700}
@@ -1370,6 +1376,7 @@ module Kamandar
     # self-contained for offline file:// use. Falls back to the system stack
     # in BrowserSurface.css if the font fails to load.
     FONT_LINKS = <<~HTML.chomp
+      <link rel="icon" type="image/x-icon" href="/favicon.ico">
       <link rel="preconnect" href="https://fonts.googleapis.com">
       <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
       <link href="https://fonts.googleapis.com/css2?family=Google+Sans:ital,opsz,wght@0,17..18,400..700;1,17..18,400..700&display=swap" rel="stylesheet">
@@ -1421,7 +1428,7 @@ module Kamandar
         <header class="appbar">
           <nav class="topbar">
             <div class="nav-wrap">
-              <a class="brand" href="/"><span class="bow">\u{1F3F9}</span> <span class="brandname">Kamandar</span></a>
+              <a class="brand" href="/"><img class="bow" src="#{BrowserSurface::LOGO_DATA_URI}" alt=""> <span class="brandname">Kamandar</span></a>
               <div class="meta">
                 #{chips}
               </div>
@@ -1447,7 +1454,7 @@ module Kamandar
         #{app}
         <footer class="foot">
           <div class="foot-wrap">
-            <span class="fbrand"><span class="bow">\u{1F3F9}</span> Kamandar v#{VERSION}</span>
+            <span class="fbrand"><img class="bow" src="#{BrowserSurface::LOGO_DATA_URI}" alt=""> Kamandar v#{VERSION}</span>
             <span class="dot">·</span>
             <span>personal GitHub command center</span>
             <span class="dot">·</span>
@@ -1617,7 +1624,7 @@ module Kamandar
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>Kamandar — error</title>#{FONT_LINKS}<style>#{BrowserSurface.css}#{extra_css}</style></head>
         <body><header><div class="wrap">
-          <h1><span class="bow">\u{1F3F9}</span> Kamandar</h1>
+          <h1><img class="bow" src="#{BrowserSurface::LOGO_DATA_URI}" alt=""> Kamandar</h1>
         </div></header>
         <main><section class="bucket warn" style="--c:var(--warn)">
           <h2><span class="icon">\u{26A0}\u{FE0F}</span> <span class="htitle">Couldn't load your queue</span></h2>
@@ -1647,7 +1654,7 @@ module Kamandar
         .appbar{position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--bg) 80%,transparent);backdrop-filter:saturate(1.5) blur(12px);-webkit-backdrop-filter:saturate(1.5) blur(12px);border-bottom:1px solid var(--border)}
         .nav-wrap{max-width:70%;margin:0 auto;padding:12px 16px;display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
         .brand{display:flex;align-items:center;gap:8px;text-decoration:none;font-weight:800;font-size:1.18rem;letter-spacing:-.01em;color:var(--fg)}
-        .brand .bow{font-size:1.2rem}
+        .brand .bow{height:1.5rem;vertical-align:middle}
         .brandname{background:linear-gradient(90deg,var(--accent),#8250df);-webkit-background-clip:text;background-clip:text;color:transparent}
         .topbar .meta{margin:0 0 0 auto}
         /* toolbar row (below the nav) */
@@ -1713,6 +1720,7 @@ module Kamandar
         .foot{flex-shrink:0;border-top:1px solid var(--border);background:var(--card)}
         .foot-wrap{max-width:70%;margin:0 auto;padding:18px 16px 28px;display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;color:var(--muted);font-size:.78rem}
         .foot .fbrand{display:flex;align-items:center;gap:6px;font-weight:700;color:var(--fg)}
+        .foot .fbrand .bow{height:1.15rem;vertical-align:middle}
         .foot .dot{opacity:.45}
         .foot .grow{flex:1 1 auto}
         .foot .ghlink{border:none;padding:0;font-weight:600}
@@ -2111,6 +2119,12 @@ module Kamandar
 
     SPINNER_FRAMES = %w[⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏].freeze
 
+    # Static assets shipped alongside the code (sibling of lib/). `__dir__` is
+    # symlink-resolved, so this still points at the repo even when the CLI is run
+    # through the ~/.local/bin/kamandar symlink that install.sh creates.
+    ASSET_DIR = File.expand_path("../assets", __dir__)
+    FAVICON_PATH = File.join(ASSET_DIR, "favicon.ico")
+
     def run(env: ENV, argv: ARGV)
       config = Config.from(env: env, argv: argv)
       return run_init(config) if config[:init] # first-run setup; no token needed yet
@@ -2336,7 +2350,7 @@ module Kamandar
 
       case req[:path]
       when "/favicon.ico"
-        client.write(Server.http_response(204, ""))
+        client.write(serve_favicon)
       when "/"
         client.write(serve_queue(req[:query], config))
       else
@@ -2358,6 +2372,16 @@ module Kamandar
       Server.http_response(200, html)
     rescue GitHub::Error => e
       Server.http_response(200, ServerSurface.error_page(e.message, config: config))
+    end
+
+    # Serve the browser-tab favicon from assets/. SECURITY: a static image only —
+    # no token, no user data ever touches this path. Falls back to 204 if the
+    # file is missing so a stripped checkout still serves pages.
+    def serve_favicon
+      bytes = File.binread(FAVICON_PATH)
+      Server.http_response(200, bytes, type: "image/x-icon")
+    rescue SystemCallError
+      Server.http_response(204, "")
     end
 
     # Read the request head (up to the blank line). We don't consume a body —
