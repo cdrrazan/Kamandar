@@ -19,6 +19,7 @@ E = Kamandar::Engine
 S = Kamandar::Surface
 B = Kamandar::BrowserSurface
 T = Kamandar::TerminalSurface
+MB = Kamandar::MenubarSurface
 
 TODAY = Time.utc(2026, 6, 22, 12, 0, 0) # Monday
 
@@ -522,6 +523,10 @@ check "#12b OUTPUT=browser -> browser",
       S.resolve_surface(output_env: "browser", browser_flag: false), :browser
 check "#12c --browser overrides OUTPUT=terminal",
       S.resolve_surface(output_env: "terminal", browser_flag: true), :browser
+check "#12d OUTPUT=menubar -> menubar",
+      S.resolve_surface(output_env: "menubar", browser_flag: false), :menubar
+check "#12e --menubar wins over --browser",
+      S.resolve_surface(output_env: "terminal", browser_flag: true, menubar_flag: true), :menubar
 
 # Build buckets via the real classifier for HTML assertions.
 # project scope -> board-driven buckets are exercised.
@@ -647,6 +652,48 @@ ok "dashboard draws panel borders", dash.include?("╔") && dash.include?("╚")
 ok "dashboard footer offers quit", dash_plain.include?("[q] quit")
 ok "dashboard uses bright green", dash.include?("\e[1;92m")
 check "dashboard fills exactly rows lines", dash.split("\r\n").size, 24
+
+# -- bonus: menu-bar surface (SwiftBar/xbar plugin) ---------------------------
+# Same buckets/config as above (project scope; reviews_owed has #101).
+menu = MB.render(buckets, config: config, generated_at: TODAY)
+menu_lines = menu.lines.map(&:chomp)
+ok "menubar title is the bow + total open",
+   menu_lines.first.start_with?("\u{1F3F9} ")
+ok "menubar tints the bar when a review is owed",
+   menu_lines.first.include?("color=#db6d28")
+ok "menubar has the dropdown separator", menu_lines.include?("---")
+ok "menubar shows a bucket header with its count",
+   menu.include?("Reviews you owe (1)")
+ok "menubar links a row to its PR url",
+   menu.include?("href=https://github.com/o/r/pull/101")
+ok "menubar nests rows as submenu items", menu.include?("--#101 Review me")
+ok "menubar offers a refresh action", menu.include?("Refresh | refresh=true")
+ok "menubar links to the local web app",
+   menu.include?("href=http://127.0.0.1:4567")
+
+# caps rows per bucket and links the overflow to the web app
+big = { reviews_owed: Array.new(15) { |i| { number: i, title: "t#{i}", url: "u#{i}", repo: "o/r" } } }
+menu_big = MB.render(big, config: { login: "me", scope: { mode: "global" } }, generated_at: TODAY)
+ok "menubar caps a bucket at MAX_ROWS rows",
+   menu_big.scan(/^--#/).size == Kamandar::MenubarSurface::MAX_ROWS
+ok "menubar shows an overflow line", menu_big.include?("…and 3 more")
+
+# pipes in titles can't break the SwiftBar param parser
+menu_pipe = MB.render(
+  { reviews_owed: [{ number: 9, title: "a | b", url: "u", repo: "o/r" }] },
+  config: { login: "me", scope: { mode: "global" } }, generated_at: TODAY
+)
+ok "menubar neutralizes pipes in titles",
+   menu_pipe.include?("a ¦ b") && !menu_pipe.include?("a | b")
+
+# never leaks the token, like every other surface
+ok "menubar output contains no token",
+   !MB.render(buckets, config: config.merge(token: SENTINEL), generated_at: TODAY).include?(SENTINEL)
+
+# error doc flags the failure and offers a retry
+menu_err = MB.error("API rate limited")
+ok "menubar error shows the message", menu_err.include?("API rate limited")
+ok "menubar error offers retry", menu_err.include?("refresh=true")
 
 # -- bonus: local web app (Server + ServerSurface) ----------------------------
 SRV  = Kamandar::Server

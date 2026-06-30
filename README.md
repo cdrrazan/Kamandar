@@ -107,6 +107,7 @@ kamandar                         # terminal output (default) — from any direct
 
 kamandar --serve                 # live web app at http://127.0.0.1:4567
 kamandar --dashboard             # full-screen Matrix TUI (digital-rain splash)
+kamandar --menubar               # SwiftBar/xbar plugin — your queue in the macOS top bar
 kamandar --browser               # render + open a static HTML page
 kamandar -b --watch 60           # live tab, refreshed every 60s
 kamandar --serve --demo          # fake data, no token — for screenshots/trials
@@ -322,6 +323,7 @@ flowchart LR
     BUCKETS --> DASH["🟩 Dashboard<br/>full-screen Matrix TUI"]
     BUCKETS --> BROWSER["🌐 Browser<br/>static offline HTML"]
     BUCKETS --> SERVE["🔌 Server (--serve)<br/>localhost web app"]
+    BUCKETS --> MENUBAR["🏹 Menu bar (--menubar)<br/>SwiftBar/xbar plugin"]
 ```
 
 - **Engine** — pure functions (GraphQL building, time math, classification),
@@ -329,9 +331,10 @@ flowchart LR
 - **Buckets** — a plain hash the engine returns. The set depends on scope
   (board-driven for `project`, issue+PR-driven otherwise).
 - **Surface** — one tiny contract (`render`/`page(buckets, ...) -> String` + an
-  `emit`). Four implementations today: terminal, dashboard, browser, and the
-  `--serve` web app (which reuses the browser surface's CSS/cards). Adding email
-  or a menubar app later requires **no engine change**.
+  `emit`). Five implementations today: terminal, dashboard, browser, the
+  `--serve` web app (which reuses the browser surface's CSS/cards), and the
+  `--menubar` SwiftBar/xbar plugin. Each was added with **no engine change** —
+  email would be the same.
 - **Server** — the only *inbound* network layer: a minimal stdlib `TCPServer`
   HTTP/1.1 loop for `--serve`, bound to `127.0.0.1`. Pure helpers (request
   parsing, response framing, scope resolution) are unit-tested; the accept loop
@@ -353,6 +356,7 @@ re-classifies.
 | 🟩 **Dashboard** | `kamandar --dashboard` | an ambient TTY status board | outbound only |
 | 🌐 **Browser** | `kamandar --browser` | an offline, shareable HTML snapshot | none (static file) |
 | 🔌 **Live web app** | `kamandar --serve` | an interactive, app-like UI | localhost listener |
+| 🏹 **Menu bar** | `kamandar --menubar` | an always-there macOS top-bar count | outbound only |
 
 ### Terminal (default)
 
@@ -510,6 +514,36 @@ gets a warning accent and a "days since handoff" badge per card. Dark mode via
 - 🔒 **Security:** the page is a static in-process snapshot. It makes no GitHub
   calls and **never contains your token or any secret** — see
   [SECURITY.md](SECURITY.md).
+
+### Menu bar (`--menubar`)
+
+Your queue **always in the macOS top bar** — a 🏹 + open count, click for a
+dropdown of every bucket with each PR/issue deep-linked to GitHub. The bar tints
+**orange** when a review is owed or a PR has gone quiet.
+
+stdlib Ruby can't draw a status item, so this rides on
+[**SwiftBar**](https://swiftbar.app) (or [xbar](https://xbarapp.com)) — a tiny
+app that runs a script on an interval and renders its stdout in the menu bar.
+`--menubar` emits exactly that plugin document (one line = the bar title, `---`
+opens the dropdown, `--` nests a row, ` | href= color=` set params). SwiftBar is
+an external app, like `cloudflared` — **not** a Ruby dependency.
+
+```sh
+brew install swiftbar                 # then launch it once and pick a plugin folder
+./menubar/install-menubar.sh 5m       # render the plugin into that folder, refresh every 5m
+./menubar/uninstall-menubar.sh        # remove it
+```
+
+The installer fills in this machine's repo/ruby/home and points
+`KAMANDAR_CONFIG` at the repo `.env` (token + login), so the plugin loads
+credentials the same way the launchd service does. Long buckets cap at 12 rows
+with an "…and N more" link to the web app. Like every surface, **the token never
+appears in the output**.
+
+```sh
+kamandar --menubar          # print the plugin document yourself (one shot)
+kamandar --menubar --demo   # fabricated data, no token — preview the layout
+```
 
 ---
 

@@ -881,9 +881,15 @@ module Kamandar
 
     # Resolve the surface preference. --browser/-b (browser_flag:true) wins;
     # otherwise OUTPUT env decides; default terminal.
-    def resolve_surface(output_env:, browser_flag:)
+    def resolve_surface(output_env:, browser_flag:, menubar_flag: false)
+      return :menubar if menubar_flag
       return :browser if browser_flag
-      output_env.to_s.strip.downcase == "browser" ? :browser : :terminal
+
+      case output_env.to_s.strip.downcase
+      when "browser" then :browser
+      when "menubar" then :menubar
+      else :terminal
+      end
     end
 
     # Pure builder for the OS "open this file" command. Not executed here so it
@@ -1744,6 +1750,89 @@ module Kamandar
   end
 
   # ---------------------------------------------------------------------------
+  # Menu-bar surface — emits a SwiftBar/xbar plugin document on stdout. Those
+  # apps run an executable on an interval and render its stdout in the macOS
+  # menu bar: the first line is the bar title, `---` opens the dropdown, a `--`
+  # prefix nests a submenu item, and ` | href=… color=…` set per-line params.
+  # Pure: consumes buckets only (no network, no engine change) — exactly the
+  # "add a menubar = new surface" the architecture was built for. The token is
+  # never referenced here, so it can never reach the output.
+  # ---------------------------------------------------------------------------
+  module MenubarSurface
+    module_function
+
+    GLYPH     = "\u{1F3F9}".freeze # 🏹 — matches the app brand
+    ATTENTION = "#db6d28".freeze   # warn orange: bar tint when something needs you
+    MAX_TITLE = 52                 # truncate long PR/issue titles so the menu stays tidy
+    MAX_ROWS  = 12                 # cap rows per bucket; overflow links to the web app
+
+    # SwiftBar/xbar read ` | ` as the start of params and newlines as item
+    # breaks — neutralize both in any text we interpolate into a line.
+    def clean(text)
+      text.to_s.tr("|", "¦").gsub(/\s+/, " ").strip
+    end
+
+    def truncate(text, max = MAX_TITLE)
+      t = clean(text)
+      t.length > max ? "#{t[0, max - 1]}…" : t
+    end
+
+    # Build the plugin document. `generated_at` is injected (surface stays pure,
+    # no Time.now here); `port` deep-links the dropdown to the live web app.
+    def render(buckets, config:, generated_at:, port: Server::DEFAULT_PORT)
+      mode  = (config[:scope] && config[:scope][:mode]) || :global
+      metas = Engine.bucket_meta(mode)
+      total = buckets.values.sum { |rows| rows.size }
+      attn  = (buckets.fetch(:reviews_owed, []).size +
+               buckets.fetch(:stale, []).size).positive?
+
+      lines = []
+      title = total.zero? ? GLYPH.dup : "#{GLYPH} #{total}"
+      lines << (attn ? "#{title} | color=#{ATTENTION}" : title)
+      lines << "---"
+
+      login = config[:login].to_s
+      head  = login.empty? ? "Kamandar" : "Kamandar — @#{clean(login)}"
+      prof  = login.empty? ? "https://github.com" : "https://github.com/#{clean(login)}"
+      lines << "#{head} | href=#{prof}"
+      lines << "Updated #{generated_at.strftime('%-I:%M %p')} | color=gray size=12"
+
+      metas.each do |key, title_text, _empty|
+        rows  = buckets.fetch(key, [])
+        meta  = BrowserSurface::BUCKET_META[key] || { icon: "•", color: "#8b949e" }
+        color = meta[:color].start_with?("#") ? meta[:color] : ATTENTION
+        header = "#{meta[:icon]} #{clean(title_text)} (#{rows.size})"
+        lines << "---"
+        lines << (rows.empty? ? "#{header} | color=gray" : "#{header} | color=#{color}")
+        rows.first(MAX_ROWS).each do |row|
+          repo = row[:repo] ? "  (#{clean(row[:repo])})" : ""
+          lines << "--##{row[:number]} #{truncate(row[:title])}#{repo} | href=#{row[:url]} color=#{color}"
+        end
+        if rows.size > MAX_ROWS
+          lines << "--…and #{rows.size - MAX_ROWS} more | href=http://#{Server::HOST}:#{port} color=gray"
+        end
+      end
+
+      lines << "---"
+      lines << "Open the web app | href=http://#{Server::HOST}:#{port}"
+      lines << "Refresh | refresh=true"
+      lines.join("\n") + "\n"
+    end
+
+    # Minimal plugin shown when the fetch fails, so the bar flags the problem
+    # (red glyph) instead of silently keeping a stale count.
+    def error(message)
+      ["#{GLYPH} ⚠\u{FE0F} | color=#cf222e", "---",
+       "Couldn't load your queue", "--#{clean(message)}", "---",
+       "Retry | refresh=true"].join("\n") + "\n"
+    end
+
+    def emit(output, io: $stdout)
+      io.puts output
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # Server — a minimal stdlib HTTP/1.1 server (TCPServer) for the live web UI.
   # Single-user, localhost-only. Pure helpers (request parsing, response
   # framing, scope resolution) are unit-tested; the accept loop lives in CLI.
@@ -1986,6 +2075,7 @@ module Kamandar
         dashboard: flags[:dashboard] || false,
         serve: flags[:serve] || false,
         no_open: flags[:no_open] || false,
+        menubar: flags[:menubar] || false,
         demo: flags[:demo] || false,
         tunnel: flags[:tunnel] || false,
         tunnel_name: flags[:tunnel_name] || env["KAMANDAR_TUNNEL"] || "kamandar",
@@ -2091,6 +2181,8 @@ module Kamandar
           flags[:serve] = true
         when "--no-open"
           flags[:no_open] = true
+        when "--menubar"
+          flags[:menubar] = true
         when "--demo"
           flags[:demo] = true
         when "--tunnel"
@@ -2142,7 +2234,8 @@ module Kamandar
 
       surface = Surface.resolve_surface(
         output_env: config[:output_env],
-        browser_flag: config[:browser_flag]
+        browser_flag: config[:browser_flag],
+        menubar_flag: config[:menubar]
       )
 
       # Terminal + interactive + no scope given: let the user pick one (and a
@@ -2153,6 +2246,20 @@ module Kamandar
       # The live web UI picks its own scope in-page, so skip the stdin picker.
       # --tunnel implies --serve (there must be a local server to expose).
       return run_server(config, open: !config[:no_open]) if config[:serve] || config[:tunnel]
+
+      # Menu-bar plugin: one fetch, emit the SwiftBar/xbar document, exit. No
+      # stdin picker (it runs headless under SwiftBar); a fetch error becomes an
+      # error plugin so the bar flags it instead of going blank.
+      if surface == :menubar
+        begin
+          buckets = fetch_and_classify(config)
+          output  = MenubarSurface.render(buckets, config: config,
+                                                   generated_at: Time.now, port: config[:port])
+        rescue GitHub::Error => e
+          output = MenubarSurface.error(e.message)
+        end
+        return MenubarSurface.emit(output)
+      end
 
       if surface == :terminal && !config[:scope_given] && $stdin.tty?
         picked = prompt_scope(config)
