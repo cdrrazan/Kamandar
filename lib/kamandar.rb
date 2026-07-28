@@ -1456,8 +1456,8 @@ module Kamandar
     end
 
     # ---- header ------------------------------------------------------------
-    # Sticky glass bar: brand + scope segmented control + live/synced badge +
-    # user, over a tools row with the scope fields, Apply/Refresh, and clock.
+    # Sticky glass bar: brand + live/synced badge + user, over a tools row with
+    # the scope fields, the scope segmented control, Apply/Refresh, and clock.
     # The whole thing is one GET <form class="controls"> so CSS :has() can
     # reveal only the fields a scope needs — no JavaScript.
     def header_html(config, generated_at:, mode:, name:, project_url:, poll:, total:)
@@ -1475,7 +1475,6 @@ module Kamandar
           <form class="controls" method="get" action="/">
             <div class="bar bar-main">
               <a class="brand" href="/"><span class="logo">K</span><span class="bname">Kamandar</span><span class="vpill">v#{VERSION}</span></a>
-              <span class="seg" role="radiogroup" aria-label="Scope">#{segments}</span>
               <span class="grow"></span>
               <span class="livebadge"><span class="livedot"></span>#{esc.call(live)}</span>
               <span class="userbox"><span class="ulogin">@#{esc.call(login)}</span><span class="uava">#{esc.call(monogram(login))}</span></span>
@@ -1487,9 +1486,10 @@ module Kamandar
                 <span class="pollicon">↻</span><span class="polltext">Auto-refresh</span>
                 <input type="number" name="poll" value="#{poll.to_i}" min="0" step="5" aria-label="Auto-refresh seconds"><span class="pollunit">s</span>
               </label>
+              <span class="grow"></span>
+              <span class="seg" role="radiogroup" aria-label="Scope">#{segments}</span>
               <button class="btn-apply" type="submit">Apply</button>
               <a class="btn-refresh" href="#{esc.call(self_link(mode, name, project_url, poll))}" title="Refresh now">↻ Refresh</a>
-              <span class="grow"></span>
               <span class="daymeta">#{esc.call(generated_at.strftime('%H:%M:%S'))} · #{esc.call(day)} days</span>
               <span class="totalmeta">#{total} open</span>
             </div>
@@ -1562,12 +1562,21 @@ module Kamandar
     end
 
     # ---- main sections -----------------------------------------------------
-    # One section per bucket (anchored for the rail links). Each row is a real
-    # link to the PR/issue with repo · #number · title, last-activity, and (for
-    # the stale bucket) a "quiet N days" chip.
+    # A tab strip over one section per bucket. Only "Reviews you owe" shows by
+    # default; the tabs are anchor links (`#sec-key`) so :target CSS reveals the
+    # clicked section and hides the rest — same mechanism the rail links use, no
+    # JavaScript. Every section stays in the DOM (and anchored) for those links.
     def sections_html(buckets, meta_list, now:)
-      esc = BrowserSurface.method(:escape)
-      meta_list.map do |key, title, empty|
+      esc  = BrowserSurface.method(:escape)
+      tabs = meta_list.map do |key, title, _empty|
+        n = (buckets[key] || []).size
+        %(<a class="mtab mt-#{key}" href="#sec-#{key}">) +
+          %(<span class="mt-nm">#{esc.call(SHORT_LABELS[key] || title)}</span>) +
+          %(<span class="mt-n#{n.zero? ? ' z' : ''}">#{n}</span></a>)
+      end.join
+      nav = %(<nav class="mtabs" role="tablist" aria-label="Buckets">#{tabs}</nav>)
+
+      secs = meta_list.map do |key, title, empty|
         rows = buckets[key] || []
         meta = BrowserSurface::BUCKET_META[key] || { icon: "•", color: "#8b9099" }
         desc = DESCRIPTIONS[key]
@@ -1584,6 +1593,7 @@ module Kamandar
         %(<section class="sec#{key == :stale ? ' warn' : ''}" id="sec-#{key}" style="--c:#{meta[:color]}">) +
           head + %(<div class="rows">#{body}</div></section>)
       end.join("\n")
+      nav + secs
     end
 
     # A single queue row — real fields only.
@@ -1744,6 +1754,11 @@ module Kamandar
     # palette, 3-column grid). Theme-aware via prefers-color-scheme. No external
     # assets beyond the webfont links; every panel is fed by real bucket data.
     def extra_css
+      # Active-tab highlight, generated per bucket: a tab lights up when its
+      # section is the :target (and reviews_owed lights up when nothing is).
+      keys       = BrowserSurface::BUCKET_META.keys
+      tab_active = (keys.map { |k| ".main:has(#sec-#{k}:target) .mt-#{k}" } +
+                    [".main:not(:has(.sec:target)) .mt-reviews_owed"]).join(",")
       <<~CSS
         :root{
           --bg:#f4f5f7;--surface:#fff;--ink:#14161a;--ink2:#2b3038;--muted:#6b7280;--muted2:#8b9099;
@@ -1843,7 +1858,22 @@ module Kamandar
         .kpi-v{font-size:26px;font-weight:600;letter-spacing:-.03em;color:var(--ink);font-family:var(--mono);line-height:1}
         .kpi-s{font-size:11.5px;color:var(--muted2)}
 
+        /* ---------- main tabs ---------- */
+        .mtabs{display:flex;flex-wrap:wrap;gap:6px;padding:5px;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+        .mtab{display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:8px;color:var(--muted);font-size:13px;font-weight:500;transition:background .12s,color .12s}
+        .mtab:hover{background:var(--line2);color:var(--ink)}
+        .mt-nm{letter-spacing:-.01em}
+        .mt-n{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--muted2);background:var(--line2);border-radius:20px;padding:1px 7px;min-width:20px;text-align:center}
+        .mt-n.z{opacity:.7}
+        #{tab_active}{background:var(--accent-bg);color:var(--accent)}
+        #{keys.map { |k| ".main:has(#sec-#{k}:target) .mt-#{k} .mt-n" }.join(",")},
+        .main:not(:has(.sec:target)) .mt-reviews_owed .mt-n{background:var(--accent);color:#fff;opacity:1}
+
         /* ---------- sections ---------- */
+        /* Only the targeted section shows; reviews_owed is the default tab. */
+        .sec{display:none}
+        .main:not(:has(.sec:target)) #sec-reviews_owed{display:block}
+        .sec:target{display:block}
         .sec{background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:0 1px 3px rgba(16,24,40,.05);overflow:hidden;scroll-margin-top:118px}
         .sec-head{padding:16px 18px 14px;border-bottom:1px solid var(--line2);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
         .sec-ic{width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--c) 15%,transparent);border-radius:9px;font-size:15px}
@@ -1917,7 +1947,6 @@ module Kamandar
           .rail{position:static}
           .rail-left{order:2}
           .bar-main{flex-wrap:wrap;height:auto;padding:12px 0}
-          .bar-main .seg{order:3}
           .kpis{grid-template-columns:repeat(2,1fr)}
           .q-open{display:none}
         }
