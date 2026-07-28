@@ -40,6 +40,8 @@
     <string>__HOME__</string>
     <key>PATH</key>
     <string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>TZ</key>
+    <string>__TZ__</string>
   </dict>
 
   <key>RunAtLoad</key>

@@ -23,10 +23,17 @@ fi
 
 mkdir -p "$HOME_DIR/Library/LaunchAgents"
 
+# launchd starts the agent with no TZ, so Ruby's Time.now falls back to UTC and
+# the "Synced" clock is wrong. Pin the machine's IANA zone (from /etc/localtime)
+# so the service shows local time; default to UTC if it can't be resolved.
+TZID="$(readlink /etc/localtime 2>/dev/null | sed 's#.*/zoneinfo/##')"
+[ -n "$TZID" ] || TZID="UTC"
+
 # Render the template — sed with a non-/ delimiter so paths with / are safe.
 sed -e "s#__RUBY__#$RUBY#g" \
     -e "s#__REPO__#$REPO#g" \
     -e "s#__HOME__#$HOME_DIR#g" \
+    -e "s#__TZ__#$TZID#g" \
     "$TEMPLATE" > "$DEST"
 
 # Reload cleanly: ignore "not loaded" on first run.
