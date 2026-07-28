@@ -755,11 +755,17 @@ proj = SRV.resolve_scope({ "mode" => "project", "project_url" => "u", "poll" => 
 check "resolve_scope project mode", proj[:scope], { mode: "project" }
 check "resolve_scope carries project_url", proj[:project_url], "u"
 check "resolve_scope carries poll", proj[:poll], 30
+# stale threshold: present -> integer override, absent -> nil (use configured default).
+check "resolve_scope carries stale override",
+      SRV.resolve_scope({ "stale" => "7" }, project_org: nil)[:stale], 7
+check "resolve_scope stale nil when absent", glob[:stale], nil
 
 # self_link: round-trips the current selection, dropping empties.
 check "self_link with no selection -> /", SURF.self_link("global", "", "", 0), "/"
 ok "self_link keeps mode + name",
    SURF.self_link("org", "Recognize", "", 0) == "/?mode=org&name=Recognize"
+check "self_link carries stale override", SURF.self_link("global", "", "", 0, 7), "/?stale=7"
+check "self_link drops nil stale", SURF.self_link("global", "", "", 0, nil), "/"
 
 # page: the live page reuses the cards, adds controls, and leaks no token.
 SECRET = "ghp_supersecrettoken"
@@ -774,6 +780,10 @@ ok "server page has a scope control", page.include?(%(role="radiogroup")) &&
 ok "controls hide scope fields by default", page.include?(".controls .field{display:none}")
 ok "controls reveal name for org/repo", page.include?(".controls:has(#m-org:checked) .f-name")
 ok "controls reveal project url for project", page.include?(".controls:has(#m-project:checked) .f-proj")
+# stale threshold field: always visible, seeded with the configured STALE_DAYS.
+ok "server page has a stale-threshold field",
+   page.include?(%(name="stale")) && page.include?(".controls .f-stale{display:inline-flex}")
+ok "stale field seeds the configured threshold", page.include?(%(name="stale" value="2"))
 # the tools row lives below the brand row, both inside the sticky header form.
 ok "tools row lives below the brand row",
    page.index(%(<div class="bar bar-main">)) < page.index(%(<div class="bar bar-tools">))

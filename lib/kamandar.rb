@@ -1418,7 +1418,7 @@ module Kamandar
     # `scope`/`name`/`project_url`/`poll` reflect the current request so the
     # form re-renders with the user's selection.
     def page(buckets, config:, generated_at:, mode: "global", name: "",
-             project_url: "", poll: 0)
+             project_url: "", poll: 0, stale: nil)
       esc         = BrowserSurface.method(:escape)
       meta_list   = Engine.bucket_meta(Engine.scope_mode(config))
       total       = meta_list.sum { |key, _, _| (buckets[key] || []).size }
@@ -1440,7 +1440,7 @@ module Kamandar
         <style>#{extra_css}</style>
         </head>
         <body>
-        #{header_html(config, generated_at: now, mode: mode, name: name, project_url: project_url, poll: poll, total: total)}
+        #{header_html(config, generated_at: now, mode: mode, name: name, project_url: project_url, poll: poll, total: total, stale: stale)}
         <div class="shell">
           #{left_rail(buckets, meta_list, scope_label: scope_label, repos: distinct_repos(buckets))}
           <main class="main">
@@ -1460,7 +1460,7 @@ module Kamandar
     # the scope fields, the scope segmented control, Apply/Refresh, and clock.
     # The whole thing is one GET <form class="controls"> so CSS :has() can
     # reveal only the fields a scope needs — no JavaScript.
-    def header_html(config, generated_at:, mode:, name:, project_url:, poll:, total:)
+    def header_html(config, generated_at:, mode:, name:, project_url:, poll:, total:, stale: nil)
       esc   = BrowserSurface.method(:escape)
       login = config[:login].to_s
       day   = config[:day_mode].to_s
@@ -1488,8 +1488,12 @@ module Kamandar
                 <span class="pollicon">↻</span><span class="polltext">Auto-refresh</span>
                 <input type="number" name="poll" value="#{poll.to_i}" min="0" step="5" aria-label="Auto-refresh seconds"><span class="pollunit">s</span>
               </label>
+              <label class="field f-stale pollbox" title="Days a PR can sit quiet before it counts as stale">
+                <span class="pollicon">⏳</span><span class="polltext">Stale after</span>
+                <input type="number" name="stale" value="#{config[:stale_days].to_i}" min="1" step="1" aria-label="Stale threshold in days"><span class="pollunit">d</span>
+              </label>
               <button class="btn-apply" type="submit">Apply</button>
-              <a class="btn-refresh" href="#{esc.call(self_link(mode, name, project_url, poll))}" title="Refresh now">↻ Refresh</a>
+              <a class="btn-refresh" href="#{esc.call(self_link(mode, name, project_url, poll, stale))}" title="Refresh now">↻ Refresh</a>
               <span class="grow"></span>
               <span class="daymeta">#{esc.call(local.strftime('%H:%M:%S'))} · #{esc.call(day)} days</span>
               <span class="totalmeta">#{total} open</span>
@@ -1741,10 +1745,10 @@ module Kamandar
     end
 
     # GET link back to self with the current selection preserved.
-    def self_link(mode, name, project_url, poll)
+    def self_link(mode, name, project_url, poll, stale = nil)
       m = mode.to_s == "global" ? "" : mode.to_s # global is the default; omit it
       q = { "mode" => m, "name" => name, "project_url" => project_url,
-            "poll" => poll.to_i }
+            "poll" => poll.to_i, "stale" => stale.to_i }
       pairs = q.reject { |_, v| v.to_s.empty? || v == 0 }
                .map { |k, v| "#{k}=#{CGI.escape(v.to_s)}" }
       pairs.empty? ? "/" : "/?#{pairs.join('&')}"
@@ -1816,6 +1820,7 @@ module Kamandar
         .controls:has(#m-repo:checked) .f-name,
         .controls:has(#m-project:checked) .f-proj,
         .controls:has(.segr:checked:not(#m-global)) .f-poll{display:inline-flex}
+        .controls .f-stale{display:inline-flex} /* stale applies to every scope */
         .pollbox{align-items:center;gap:7px;min-width:0;padding:0 7px 0 11px;cursor:text}
         .pollbox:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 16%,transparent)}
         .pollicon{color:var(--accent);font-size:14px;line-height:1}
@@ -2096,9 +2101,11 @@ module Kamandar
         else "global"
         end
       scope = Engine.parse_scope(raw, project_org: project_org)
+      st    = query["stale"].to_s.strip
       { scope: scope, mode: mode, name: name,
         project_url: query["project_url"].to_s.strip,
-        poll: query["poll"].to_i }
+        poll: query["poll"].to_i,
+        stale: st.empty? ? nil : st.to_i } # nil = fall back to configured STALE_DAYS
     end
   end
 
@@ -2701,10 +2708,12 @@ module Kamandar
       sel = Server.resolve_scope(query, project_org: config[:project_org])
       live = config.merge(scope: sel[:scope],
                           project_url: sel[:project_url].empty? ? config[:project_url] : sel[:project_url])
+      live[:stale_days] = sel[:stale] if sel[:stale] && sel[:stale] > 0 # per-request override
       buckets = fetch_and_classify(live)
       html = ServerSurface.page(buckets, config: live, generated_at: Time.now,
                                          mode: sel[:mode], name: sel[:name],
-                                         project_url: sel[:project_url], poll: sel[:poll])
+                                         project_url: sel[:project_url], poll: sel[:poll],
+                                         stale: sel[:stale])
       Server.http_response(200, html)
     rescue GitHub::Error => e
       Server.http_response(200, ServerSurface.error_page(e.message, config: config))
@@ -2943,6 +2952,7 @@ module Kamandar
       token = config[:token] if token.empty?
       login = prompt_line(out, input, "GitHub login (your username)", config[:login])
       project = prompt_line(out, input, "Project URL (optional, enables board buckets)", config[:project_url])
+      stale = prompt_line(out, input, "Stale threshold — days quiet before a PR is flagged", config[:stale_days].to_s)
 
       if token.nil? || token.empty? || login.nil? || login.empty?
         out.puts "\nkamandar: token and login are both required — nothing written."
@@ -2951,7 +2961,8 @@ module Kamandar
 
       verify_token(token, login, out)
 
-      values = { "GITHUB_TOKEN" => token, "GH_LOGIN" => login, "PROJECT_URL" => project }
+      values = { "GITHUB_TOKEN" => token, "GH_LOGIN" => login, "PROJECT_URL" => project,
+                 "STALE_DAYS" => stale }
       write_config_file(path, Config.render_file(values))
       out.puts "\nSaved. Run `kamandar` from anywhere now."
     rescue Interrupt
