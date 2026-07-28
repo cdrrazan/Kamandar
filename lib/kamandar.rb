@@ -1464,7 +1464,8 @@ module Kamandar
       esc   = BrowserSurface.method(:escape)
       login = config[:login].to_s
       day   = config[:day_mode].to_s
-      live  = poll.to_i > 0 ? "Live · every #{poll.to_i}s" : "Synced #{generated_at.strftime('%-I:%M %p')}"
+      local = generated_at.getlocal # show wall-clock local time, not UTC
+      live  = poll.to_i > 0 ? "Live · every #{poll.to_i}s" : "Synced #{local.strftime('%-I:%M %p')}"
       segments = SCOPE_MODES.map do |m|
         ck = m == mode ? " checked" : ""
         %(<input class="segr" type="radio" name="mode" id="m-#{m}" value="#{m}"#{ck}>) +
@@ -1490,7 +1491,7 @@ module Kamandar
               <span class="seg" role="radiogroup" aria-label="Scope">#{segments}</span>
               <button class="btn-apply" type="submit">Apply</button>
               <a class="btn-refresh" href="#{esc.call(self_link(mode, name, project_url, poll))}" title="Refresh now">↻ Refresh</a>
-              <span class="daymeta">#{esc.call(generated_at.strftime('%H:%M:%S'))} · #{esc.call(day)} days</span>
+              <span class="daymeta">#{esc.call(local.strftime('%H:%M:%S'))} · #{esc.call(day)} days</span>
               <span class="totalmeta">#{total} open</span>
             </div>
           </form>
@@ -1681,7 +1682,7 @@ module Kamandar
             <span class="f-sep">·</span><span class="mono">127.0.0.1 · stdlib-only Ruby</span>
             <span class="grow"></span>
             <a class="f-gh" href="#{REPO_URL}" target="_blank" rel="noopener">GitHub</a>
-            <span class="f-sep">·</span><span class="mono">generated #{esc.call(now.strftime('%H:%M:%S'))}</span>
+            <span class="f-sep">·</span><span class="mono">generated #{esc.call(now.getlocal.strftime('%H:%M:%S'))}</span>
           </div>
         </footer>
       FOOT
