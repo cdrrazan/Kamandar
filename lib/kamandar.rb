@@ -90,7 +90,7 @@
 #                                     If unset and run in an interactive terminal,
 #                                     you're prompted to pick a mode (Enter =
 #                                     global). Skipped for pipes/cron/browser.
-#   NOT_STARTED_STATUSES  (Todo,Backlog,No Status)  case-insensitive status set
+#   NOT_STARTED_STATUSES  (Todo,Backlog,No Status,Ready)  case-insensitive set
 #   REVIEW_STATUSES       (In Review,Review,Needs Review)  statuses for bucket #4
 #   QA_STATUSES           (Ready for QA,QA,In QA)  statuses for bucket #5
 #   BLOCKED_STATUSES      (Blocked,On Hold,Waiting)  statuses for bucket #6
@@ -2067,7 +2067,7 @@ module Kamandar
       flags = parse_flags(argv)
       env = with_config_file(env) # config file is the base layer; real ENV wins over it
 
-      not_started = (env["NOT_STARTED_STATUSES"] || "Todo,Backlog,No Status")
+      not_started = (env["NOT_STARTED_STATUSES"] || "Todo,Backlog,No Status,Ready")
                     .split(",").map(&:strip).reject(&:empty?)
 
       review_statuses = (env["REVIEW_STATUSES"] || "In Review,Review,Needs Review")

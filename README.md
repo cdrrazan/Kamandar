@@ -224,7 +224,7 @@ Kamandar/
 | `WATCH_SECONDS` / `--watch N` | | `0` (off) | Browser only: re-fetch + rewrite the page every N seconds |
 | `PROJECT_URL` | for #3 | — | Board/view URL, e.g. `https://github.com/orgs/Recognize/projects/10/views/5` |
 | `SCOPE` / `--scope` | | `global` | Scope for PR buckets (#1, #2, #7, bonus). One of `global`, `org[:NAME]`, `repo:owner/name`, `project`. See [Scope](#-scope). |
-| `NOT_STARTED_STATUSES` | | `Todo,Backlog,No Status` | Status names treated as "not started" (case-insensitive) — bucket #3 |
+| `NOT_STARTED_STATUSES` | | `Todo,Backlog,No Status,Ready` | Status names treated as "not started" (case-insensitive) — bucket #3 |
 | `REVIEW_STATUSES` | | `In Review,Review,Needs Review` | Status names treated as "in review" (case-insensitive) — bucket #4 |
 | `QA_STATUSES` | | `Ready for QA,QA,In QA` | Status names treated as "in QA" (case-insensitive) — bucket #5 |
 | `BLOCKED_STATUSES` | | `Blocked,On Hold,Waiting` | Status names treated as "blocked" (case-insensitive) — bucket #6 |

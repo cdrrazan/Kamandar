@@ -160,6 +160,18 @@ kept = E.assigned_not_started(items, login: "me",
 check "#3 project filter keeps mine+Todo and mine+Backlog",
       kept.map { |i| i["content"]["number"] }.sort, [1, 4]
 
+# "Ready" folds into not-started by default; exact match keeps it distinct from
+# "Ready for QA" (which belongs to the QA bucket).
+default_ns = Kamandar::Config.from(env: {}, argv: [])[:not_started]
+check "#3 default not_started includes Ready", default_ns.include?("Ready"), true
+ready_items = [
+  item(login: "me", status: "Ready", number: 20),
+  item(login: "me", status: "Ready for QA", number: 21)
+]
+ready_kept = E.assigned_not_started(ready_items, login: "me", not_started: default_ns)
+check "#3 Ready lands in not-started, Ready for QA does not",
+      ready_kept.map { |i| i["content"]["number"] }, [20]
+
 # in_review: issues assigned to me whose Status is in the review set
 review_items = [
   item(login: "me", status: "In Review", number: 10),
