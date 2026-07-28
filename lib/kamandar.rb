@@ -1475,22 +1475,22 @@ module Kamandar
         <header class="topbar">
           <form class="controls" method="get" action="/">
             <div class="bar bar-main">
-              <a class="brand" href="/"><span class="logo">K</span><span class="bname">Kamandar</span><span class="vpill">v#{VERSION}</span></a>
+              <a class="brand" href="/"><span class="logo">#{MenubarSurface::GLYPH}</span><span class="bname">Kamandar</span><span class="vpill">v#{VERSION}</span></a>
               <span class="grow"></span>
               <span class="livebadge"><span class="livedot"></span>#{esc.call(live)}</span>
               <span class="userbox"><span class="ulogin">@#{esc.call(login)}</span><span class="uava">#{esc.call(monogram(login))}</span></span>
             </div>
             <div class="bar bar-tools">
+              <span class="seg" role="radiogroup" aria-label="Scope">#{segments}</span>
               <input class="field f-name" type="text" name="name" value="#{esc.call(name)}" placeholder="org or owner/name">
               <input class="field f-proj" type="text" name="project_url" value="#{esc.call(project_url)}" placeholder="project board URL">
               <label class="field f-poll pollbox" title="Auto-refresh interval — 0 turns it off">
                 <span class="pollicon">↻</span><span class="polltext">Auto-refresh</span>
                 <input type="number" name="poll" value="#{poll.to_i}" min="0" step="5" aria-label="Auto-refresh seconds"><span class="pollunit">s</span>
               </label>
-              <span class="grow"></span>
-              <span class="seg" role="radiogroup" aria-label="Scope">#{segments}</span>
               <button class="btn-apply" type="submit">Apply</button>
               <a class="btn-refresh" href="#{esc.call(self_link(mode, name, project_url, poll))}" title="Refresh now">↻ Refresh</a>
+              <span class="grow"></span>
               <span class="daymeta">#{esc.call(local.strftime('%H:%M:%S'))} · #{esc.call(day)} days</span>
               <span class="totalmeta">#{total} open</span>
             </div>
@@ -1729,7 +1729,7 @@ module Kamandar
         <meta name="viewport" content="width=device-width, initial-scale=1">
         <title>Kamandar — error</title>#{FONT_LINKS}<style>#{extra_css}</style></head>
         <body>
-        <header class="topbar"><div class="bar bar-main"><a class="brand" href="/"><span class="logo">K</span><span class="bname">Kamandar</span></a></div></header>
+        <header class="topbar"><div class="bar bar-main"><a class="brand" href="/"><span class="logo">#{MenubarSurface::GLYPH}</span><span class="bname">Kamandar</span></a></div></header>
         <div class="shell shell-error">
           <section class="sec warn" style="--c:#cf222e">
             <div class="sec-head"><span class="sec-ic">\u{26A0}\u{FE0F}</span><h2 class="sec-title">Couldn't load your queue</h2></div>
@@ -1778,7 +1778,7 @@ module Kamandar
         }}
         *{box-sizing:border-box}
         html,body{margin:0;padding:0}
-        body{font-family:"Instrument Sans","Helvetica Neue",Helvetica,-apple-system,BlinkMacSystemFont,Arial,sans-serif;-webkit-font-smoothing:antialiased;color:var(--ink);background:linear-gradient(180deg,var(--bg),color-mix(in srgb,var(--bg) 88%,#000 4%));min-height:100vh}
+        body{font-family:"Instrument Sans","Helvetica Neue",Helvetica,-apple-system,BlinkMacSystemFont,Arial,sans-serif;-webkit-font-smoothing:antialiased;color:var(--ink);background:linear-gradient(180deg,var(--bg),color-mix(in srgb,var(--bg) 88%,#000 4%));min-height:100vh;padding-bottom:52px}
         a{color:var(--accent);text-decoration:none}
         a:hover{color:var(--accent-d)}
         .mono{font-family:var(--mono)}
@@ -1793,7 +1793,7 @@ module Kamandar
         .bar-tools{flex-wrap:wrap;gap:8px;padding:10px 0 12px;border-top:1px solid var(--line2)}
         .brand{display:flex;align-items:center;gap:10px;color:var(--ink)}
         .brand:hover{color:var(--ink)}
-        .logo{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:700;letter-spacing:-.02em}
+        .logo{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;line-height:1;font-weight:700;letter-spacing:-.02em}
         .bname{font-size:16px;font-weight:600;letter-spacing:-.02em}
         .vpill{font-family:var(--mono);font-size:10px;color:var(--muted2);border:1px solid var(--line);border-radius:5px;padding:2px 5px}
         .seg{display:inline-flex;align-items:center;gap:2px;background:var(--line2);border:1px solid var(--line);border-radius:9px;padding:3px}
@@ -1928,9 +1928,9 @@ module Kamandar
         .emptyicon{font-size:2.4rem;line-height:1;opacity:.85}
         .emptymsg{margin:0;color:var(--muted);font-size:14px;font-weight:500}
 
-        /* ---------- footer ---------- */
-        .foot{border-top:1px solid var(--line);background:color-mix(in srgb,var(--surface) 70%,transparent)}
-        .foot-in{max-width:1440px;margin:0 auto;padding:16px 28px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted2)}
+        /* ---------- footer (pinned to the viewport bottom) ---------- */
+        .foot{position:fixed;left:0;right:0;bottom:0;z-index:20;border-top:1px solid var(--line);background:color-mix(in srgb,var(--surface) 92%,transparent);backdrop-filter:saturate(1.4) blur(14px);-webkit-backdrop-filter:saturate(1.4) blur(14px)}
+        .foot-in{max-width:1440px;margin:0 auto;padding:12px 28px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted2)}
         .f-brand{font-weight:600;color:var(--ink2)}
         .f-sep{color:#d2d6dc}
         .f-gh{font-weight:500}
