@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Kamandar daily-summary LaunchAgent (macOS, per-user).
+
+  This is a TEMPLATE. Do not load it directly — the __PLACEHOLDERS__ are
+  filled in by service/install-digest.sh, which writes the rendered copy to
+  ~/Library/LaunchAgents/com.kamandar.digest.plist and bootstraps it.
+
+  Runs `kamandar --email` once a day at the configured time (default 22:00),
+  loading the token + SMTP config from the repo .env via KAMANDAR_CONFIG. It
+  fetches the queue, builds the plain-text digest, sends it over SMTP, and
+  exits — no server, no browser. RunAtLoad is false so installing doesn't fire
+  an immediate email; StartCalendarInterval drives the schedule. TZ pins the
+  machine's zone so the schedule (and the digest clock) use local time.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.kamandar.digest</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>__RUBY__</string>
+    <string>__REPO__/lib/kamandar.rb</string>
+    <string>--email</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>__REPO__</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>KAMANDAR_CONFIG</key>
+    <string>__REPO__/.env</string>
+    <key>HOME</key>
+    <string>__HOME__</string>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    <key>TZ</key>
+    <string>__TZ__</string>
+  </dict>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>__HOUR__</integer>
+    <key>Minute</key>
+    <integer>__MIN__</integer>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>__HOME__/Library/Logs/kamandar.digest.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/Library/Logs/kamandar.digest.err.log</string>
+</dict>
+</plist>

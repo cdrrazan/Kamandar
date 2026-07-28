@@ -67,6 +67,8 @@
 #        ruby lib/kamandar.rb --dashboard  # full-screen Matrix TUI (rain splash)
 #        ruby lib/kamandar.rb --browser    # render + open a static HTML page
 #        ruby lib/kamandar.rb -b --watch 60  # live tab, refreshed every 60s
+#        ruby lib/kamandar.rb --email      # send the daily-summary email now
+#        ruby lib/kamandar.rb --email --demo  # print the digest (no SMTP send)
 #        ruby lib/kamandar.rb --statuses   # list a board's Status labels (to
 #                                          # configure NOT_STARTED/REVIEW_STATUSES)
 #        ruby lib/kamandar.rb --init       # first-run wizard: save token + login
@@ -96,7 +98,12 @@
 #   BLOCKED_STATUSES      (Blocked,On Hold,Waiting)  statuses for bucket #6
 #   ITERATION_FILTER      (off)       `current` restricts #3 to the active sprint
 #   ITERATION_FIELD       (Iteration) board's iteration field name
-#   STALE_DAYS            (2)         threshold for bucket #7
+#   STALE_DAYS            (2)         threshold for bucket #7. --init prompts for
+#                                     it; --serve has a live "Stale after Nd"
+#                                     field (?stale=N override, no persist)
+#   SMTP_HOST/PORT/USER/PASS (—/587)  --email daily summary: SMTP submission.
+#   SMTP_TLS              (true)       STARTTLS on the submission connection
+#   MAIL_FROM / MAIL_TO   (=SMTP_USER) sender + recipient of the digest email
 #   IGNORE_OLDER_THAN     (0=off)     hide any issue/PR untouched for more than
 #     / --ignore-older-than N         N calendar days (declutter cold work; all
 #                                     buckets, every surface). 0/unset = show all
@@ -105,10 +112,13 @@
 #                                     only; pipes stay plain)
 #
 # -----------------------------------------------------------------------------
-# PUSH LAYER (terminal mode) — no scheduler code lives in this tool.
+# PUSH LAYER — built-in daily email, or bring-your-own cron.
 # -----------------------------------------------------------------------------
-# Wire it into your own weekday-morning cron, piping terminal output to a
-# notifier. Examples (crontab, 8:30am Mon-Fri):
+# `--email` fetches the queue, builds a plain-text digest (MailSurface), and
+# sends it over SMTP (Mailer) — set SMTP_HOST/USER/PASS + MAIL_TO first (--init
+# prompts for them). `service/install-digest.sh [HH:MM]` schedules it via a
+# launchd agent (default 22:00). Or wire the terminal output into your own
+# cron, piping to a notifier. Examples (crontab, 8:30am Mon-Fri):
 #
 #   30 8 * * 1-5  GITHUB_TOKEN=... GH_LOGIN=you PROJECT_URL=... \
 #                 ruby /path/lib/kamandar.rb | mail -s "Kamandar" you@example.com
@@ -155,6 +165,7 @@ require "rbconfig"
 require "io/console" # default gem (ships with Ruby): winsize + getch for the TUI
 require "socket" # stdlib: TCPServer for the local web UI (--serve)
 require "cgi"    # stdlib: query-string parsing + HTML escaping for the server
+require "net/smtp" # stdlib: SMTP delivery for the --email daily summary
 
 module Kamandar
   VERSION = "1.0.0"
@@ -2045,6 +2056,117 @@ module Kamandar
   end
 
   # ---------------------------------------------------------------------------
+  # MailSurface — a plain-text daily digest of the queue plus RFC-822 framing.
+  # Pure like every other surface: consumes buckets only, never touches the
+  # network or the token. The SMTP send lives in Mailer; this just builds the
+  # subject, the body, and the assembled message. (`--email`.)
+  # ---------------------------------------------------------------------------
+  module MailSurface
+    module_function
+
+    MAX_ROWS = 15 # cap rows per bucket so a huge queue still makes a readable email
+
+    # One-line subject, ASCII-only (no RFC-2047 encoding needed): total open plus
+    # the two counts that actually demand action — reviews owed and stale PRs.
+    def subject(buckets, config)
+      total = buckets.values.sum { |rows| rows.size }
+      owed  = buckets.fetch(:reviews_owed, []).size
+      stale = buckets.fetch(:stale, []).size
+      bits  = ["#{total} open"]
+      bits << "#{owed} to review" if owed.positive?
+      bits << "#{stale} stale"    if stale.positive?
+      "Kamandar daily: #{bits.join(', ')}"
+    end
+
+    # Plain-text digest. `generated_at` is injected (surface stays pure). Sections
+    # follow bucket_meta order; empty buckets collapse into one trailing line.
+    def text_body(buckets, config, generated_at:)
+      mode  = (config[:scope] && config[:scope][:mode]) || :global
+      metas = Engine.bucket_meta(mode)
+      login = config[:login].to_s
+      total = metas.sum { |key, _t, _e| buckets.fetch(key, []).size }
+      local = generated_at.getlocal # local wall-clock, not UTC (matches the web UI)
+
+      out = []
+      out << "Kamandar — daily summary#{login.empty? ? '' : " for @#{login}"}"
+      out << "#{local.strftime('%a %b %-d, %Y · %-I:%M %p')} · " \
+             "#{Engine.scope_label(config[:scope])} · #{total} open"
+      out << ""
+
+      empty = []
+      metas.each do |key, title, _e|
+        rows  = buckets.fetch(key, [])
+        label = ServerSurface::SHORT_LABELS[key] || title
+        if rows.empty?
+          empty << label
+          next
+        end
+        out << "#{label.upcase} (#{rows.size})"
+        rows.first(MAX_ROWS).each do |row|
+          repo = row[:repo] ? " (#{row[:repo]})" : ""
+          tail = row[:days] ? "  — quiet #{row[:days]}d" : ""
+          out << "  ##{row[:number]}  #{row[:title]}#{repo}#{tail}"
+          out << "     #{row[:url]}"
+        end
+        out << "  …and #{rows.size - MAX_ROWS} more" if rows.size > MAX_ROWS
+        out << ""
+      end
+
+      out << "All clear: #{empty.join(', ')}" unless empty.empty?
+      out << ""
+      out << "— Kamandar v#{VERSION}"
+      out.join("\n") + "\n"
+    end
+
+    # A complete RFC-822 message (headers + CRLF body) ready for Net::SMTP.
+    # `Date:` comes from generated_at so the whole thing stays deterministic.
+    def message(buckets, config, generated_at:, from:, to:)
+      body = text_body(buckets, config, generated_at: generated_at)
+      [
+        "From: #{from}",
+        "To: #{to}",
+        "Subject: #{subject(buckets, config)}",
+        "Date: #{generated_at.rfc2822}",
+        "MIME-Version: 1.0",
+        "Content-Type: text/plain; charset=UTF-8",
+        "Content-Transfer-Encoding: 8bit",
+        "", ""
+      ].join("\r\n") + body.gsub(/\r?\n/, "\r\n")
+    end
+  end
+
+  # ---------------------------------------------------------------------------
+  # Mailer — the only outbound SMTP layer (Net::SMTP). Sends a prebuilt message;
+  # knows nothing about buckets. STARTTLS on by default (submission port 587).
+  # ---------------------------------------------------------------------------
+  module Mailer
+    class Error < StandardError; end
+
+    # Failures we translate into a clean one-line Error instead of a stack trace.
+    SEND_ERRORS = [
+      Net::SMTPError, Net::OpenTimeout, Net::ReadTimeout, SocketError,
+      OpenSSL::SSL::SSLError, SystemCallError
+    ].freeze
+
+    module_function
+
+    # Deliver a raw RFC-822 message via SMTP. `mail` is config[:mail]. Plain auth
+    # only when a user is set. Raises Mailer::Error on any connection/SMTP failure.
+    def deliver(message, mail)
+      raise Error, "SMTP host not configured (set SMTP_HOST)" if mail[:host].to_s.empty?
+
+      smtp = Net::SMTP.new(mail[:host], mail[:port])
+      smtp.enable_starttls_auto if mail[:tls]
+      authtype = mail[:user].to_s.empty? ? nil : :plain
+      smtp.start("localhost", mail[:user], mail[:pass], authtype) do |s|
+        s.send_message(message, mail[:from], mail[:to])
+      end
+    rescue *SEND_ERRORS => e
+      raise Error, "SMTP delivery failed (#{e.class}: #{e.message})"
+    end
+  end
+
+  # ---------------------------------------------------------------------------
   # Server — a minimal stdlib HTTP/1.1 server (TCPServer) for the live web UI.
   # Single-user, localhost-only. Pure helpers (request parsing, response
   # framing, scope resolution) are unit-tested; the accept loop lives in CLI.
@@ -2292,6 +2414,17 @@ module Kamandar
         no_open: flags[:no_open] || false,
         menubar: flags[:menubar] || false,
         demo: flags[:demo] || false,
+        email: flags[:email] || false,
+        mail: {
+          host: env["SMTP_HOST"],
+          port: (env["SMTP_PORT"] || "587").to_i,
+          user: env["SMTP_USER"],
+          pass: env["SMTP_PASS"],
+          # STARTTLS on unless explicitly disabled (common falsey spellings).
+          tls: !%w[0 false no off].include?((env["SMTP_TLS"] || "true").strip.downcase),
+          from: (env["MAIL_FROM"] || env["SMTP_USER"]),
+          to: (env["MAIL_TO"] || env["SMTP_USER"])
+        },
         tunnel: flags[:tunnel] || false,
         tunnel_name: flags[:tunnel_name] || env["KAMANDAR_TUNNEL"] || "kamandar",
         port: flags[:port] || (env["PORT"] || Server::DEFAULT_PORT).to_i,
@@ -2403,6 +2536,8 @@ module Kamandar
           flags[:no_open] = true
         when "--menubar"
           flags[:menubar] = true
+        when "--email"
+          flags[:email] = true
         when "--demo"
           flags[:demo] = true
         when "--tunnel"
@@ -2463,6 +2598,10 @@ module Kamandar
       # pipes are skipped so nothing ever blocks on stdin.
       return print_statuses(config) if config[:list_statuses]
 
+      # Daily summary email: one fetch, build the digest, send via SMTP, exit.
+      # Runs headless (launchd at 22:00) — no stdin picker, no browser.
+      return run_email(config) if config[:email]
+
       # The live web UI picks its own scope in-page, so skip the stdin picker.
       # --tunnel implies --serve (there must be a local server to expose).
       return run_server(config, open: !config[:no_open]) if config[:serve] || config[:tunnel]
@@ -2513,6 +2652,34 @@ module Kamandar
         warn_if_empty(config, buckets)
       end
     rescue GitHub::Error => e
+      $stderr.puts "kamandar: #{e.message}"
+      exit 1
+    end
+
+    # Fetch the queue, build the plain-text digest, and email it. With --demo
+    # (no SMTP creds) it prints the message to stdout as a preview instead of
+    # sending. A GitHub::Error bubbles to run's rescue; SMTP errors are handled
+    # here. Exits non-zero on misconfiguration so cron/launchd surfaces it.
+    def run_email(config)
+      mail    = config[:mail]
+      buckets = with_spinner("Building your daily summary…") { fetch_and_classify(config) }
+      msg     = MailSurface.message(buckets, config, generated_at: Time.now,
+                                                     from: mail[:from], to: mail[:to])
+
+      if config[:demo]
+        puts msg # preview: no SMTP round-trip, no creds required
+        return
+      end
+
+      if mail[:host].to_s.empty? || mail[:to].to_s.empty?
+        $stderr.puts "kamandar: --email needs SMTP_HOST and a recipient " \
+                     "(MAIL_TO, or SMTP_USER as the default). See the README."
+        exit 1
+      end
+
+      Mailer.deliver(msg, mail)
+      $stderr.puts "kamandar: daily summary sent to #{mail[:to]}."
+    rescue Mailer::Error => e
       $stderr.puts "kamandar: #{e.message}"
       exit 1
     end
@@ -2954,6 +3121,19 @@ module Kamandar
       project = prompt_line(out, input, "Project URL (optional, enables board buckets)", config[:project_url])
       stale = prompt_line(out, input, "Stale threshold — days quiet before a PR is flagged", config[:stale_days].to_s)
 
+      # Optional daily-summary email. Blank SMTP host skips it entirely.
+      m = config[:mail] || {}
+      out.puts "\nDaily summary email (optional — leave SMTP host blank to skip):"
+      smtp_host = prompt_line(out, input, "  SMTP host (e.g. smtp.gmail.com)", m[:host])
+      smtp_port = smtp_user = smtp_pass = mail_to = nil
+      unless smtp_host.to_s.empty?
+        smtp_port = prompt_line(out, input, "  SMTP port", (m[:port] || 587).to_s)
+        smtp_user = prompt_line(out, input, "  SMTP username", m[:user])
+        smtp_pass = prompt_secret(out, input, "  SMTP password (blank keeps current): ")
+        smtp_pass = m[:pass].to_s if smtp_pass.empty?
+        mail_to   = prompt_line(out, input, "  Send the summary to", m[:to] || smtp_user)
+      end
+
       if token.nil? || token.empty? || login.nil? || login.empty?
         out.puts "\nkamandar: token and login are both required — nothing written."
         return
@@ -2963,8 +3143,14 @@ module Kamandar
 
       values = { "GITHUB_TOKEN" => token, "GH_LOGIN" => login, "PROJECT_URL" => project,
                  "STALE_DAYS" => stale }
+      unless smtp_host.to_s.empty?
+        values.merge!("SMTP_HOST" => smtp_host, "SMTP_PORT" => smtp_port,
+                      "SMTP_USER" => smtp_user, "SMTP_PASS" => smtp_pass,
+                      "MAIL_TO" => (mail_to.to_s.empty? ? smtp_user : mail_to))
+      end
       write_config_file(path, Config.render_file(values))
       out.puts "\nSaved. Run `kamandar` from anywhere now."
+      out.puts "Tip: `kamandar --email` sends the summary now; see service/ to schedule 10 PM." unless smtp_host.to_s.empty?
     rescue Interrupt
       out.puts "\nkamandar: setup cancelled."
     end

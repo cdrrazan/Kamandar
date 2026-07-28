@@ -112,6 +112,9 @@ kamandar --browser               # render + open a static HTML page
 kamandar -b --watch 60           # live tab, refreshed every 60s
 kamandar --serve --demo          # fake data, no token — for screenshots/trials
 kamandar --serve --no-open       # serve headless (don't auto-open a browser tab)
+
+kamandar --email                 # send the daily-summary email now (needs SMTP config)
+kamandar --email --demo          # print the digest to the terminal (no SMTP send)
 ```
 
 ### Run it persistently (macOS)
@@ -137,6 +140,27 @@ The Ruby server still binds `127.0.0.1` only; the `--tunnel` child runs
 in front of that hostname** — the page is your live GitHub queue, backed by a
 PAT. Don't want it public? Drop `--tunnel` from the plist's `ProgramArguments`
 and re-run the installer for a localhost-only daemon.
+
+### Daily summary email (10 PM)
+
+Get a plain-text digest of your queue emailed once a day. Configure SMTP during
+setup (`--init` prompts for host / port / user / password / recipient), then
+schedule it:
+
+```sh
+ruby lib/kamandar.rb --init      # fill in SMTP host, user, password, recipient
+ruby lib/kamandar.rb --email     # send one now to confirm it works
+./service/install-digest.sh      # schedule it daily at 22:00 (10 PM)
+./service/install-digest.sh 09:30  # …or pick your own HH:MM
+./service/uninstall-digest.sh    # unschedule
+```
+
+The digest reuses the same buckets as every other surface (`MailSurface` builds
+the body; `Mailer` sends it over SMTP with STARTTLS). It's a separate launchd
+agent from `--serve`, so you can run either or both. Gmail/Workspace users:
+create an [app password](https://support.google.com/accounts/answer/185833) and
+use `smtp.gmail.com` on port `587`. The SMTP password lives in `.env` (git-ignored,
+`0600`) — same as the token.
 
 > Prefer not to install? Everything also runs in place as `ruby lib/kamandar.rb …`.
 
@@ -239,6 +263,11 @@ Kamandar/
 | `--port N` / `PORT` | | `4567` | Port for `--serve` (bound to `127.0.0.1` only) |
 | `--tunnel [name]` / `KAMANDAR_TUNNEL` | | off | Spawn a [Cloudflare Tunnel](#remote-access-via-cloudflare-tunnel) child alongside `--serve` (implies `--serve`); tunnel name defaults to `kamandar`. Needs `cloudflared` on `PATH` |
 | `--demo` | | off | Render fabricated data (15–20 rows/bucket) with no network or token — for screenshots and offline trials |
+| `--email` | | off | Fetch the queue, build a plain-text digest, and send it over SMTP. With `--demo`, prints the digest instead of sending. Schedule via `service/install-digest.sh` |
+| `SMTP_HOST` / `SMTP_PORT` | for `--email` | — / `587` | SMTP submission server + port |
+| `SMTP_USER` / `SMTP_PASS` | for `--email` | — | SMTP credentials (plain auth over STARTTLS). Gmail: use an app password |
+| `SMTP_TLS` | | `true` | STARTTLS on the submission connection; set `false` to disable |
+| `MAIL_FROM` / `MAIL_TO` | | `=SMTP_USER` | Sender + recipient of the daily digest |
 
 Only the **org** and **project number** are parsed from `PROJECT_URL` (via
 `/orgs/<org>/projects/<num>`); the saved-view number is ignored — see
@@ -340,6 +369,10 @@ flowchart LR
   HTTP/1.1 loop for `--serve`, bound to `127.0.0.1`. Pure helpers (request
   parsing, response framing, scope resolution) are unit-tested; the accept loop
   lives in the CLI.
+- **MailSurface / Mailer** — `--email` splits the same way: `MailSurface` is a
+  pure surface that builds the plain-text digest + RFC-822 message from buckets
+  (no network, no token); `Mailer` is the only *outbound SMTP* layer (stdlib
+  `Net::SMTP`, STARTTLS). Adding it needed **no engine change**.
 
 Everything is guarded by `if __FILE__ == $PROGRAM_NAME` so the test suite can
 `require` the file with zero network and no ENV reads.
@@ -358,6 +391,7 @@ re-classifies.
 | 🌐 **Browser** | `kamandar --browser` | an offline, shareable HTML snapshot | none (static file) |
 | 🔌 **Live web app** | `kamandar --serve` | an interactive, app-like UI | localhost listener |
 | 🏹 **Menu bar** | `kamandar --menubar` | an always-there macOS top-bar count | outbound only |
+| 📧 **Email** | `kamandar --email` | a scheduled daily digest to your inbox | outbound (SMTP) |
 
 ### Terminal (default)
 

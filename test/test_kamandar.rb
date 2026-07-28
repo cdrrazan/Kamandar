@@ -839,6 +839,47 @@ ok "server page has a footer", page.include?(%(<footer class="foot">)) &&
 ok "footer shows the generated time", page.include?("generated ")
 ok "footer links the GitHub repo", page.include?(%(class="f-gh" href="#{Kamandar::ServerSurface::REPO_URL}" target="_blank" rel="noopener"))
 
+# --- MailSurface: the --email daily summary --------------------------------
+MAIL = Kamandar::MailSurface
+mail_cfg = config.merge(token: SECRET)
+
+subj = MAIL.subject(buckets, mail_cfg)
+ok "mail subject leads with the open total", subj.start_with?("Kamandar daily: ")
+ok "mail subject counts reviews owed", subj.include?("#{buckets[:reviews_owed].size} to review")
+ok "mail subject is ASCII (no RFC-2047 needed)", subj.ascii_only?
+
+body = MAIL.text_body(buckets, mail_cfg, generated_at: TODAY)
+ok "mail body names the user", body.include?("daily summary for @me")
+ok "mail body reuses bucket content", body.include?("#101") && body.include?("Review me")
+ok "mail body lists row URLs", body.include?("https://github.com/")
+ok "mail body leaks no token", !body.include?(SECRET)
+
+msg = MAIL.message(buckets, mail_cfg, generated_at: TODAY,
+                                      from: "me@example.com", to: "you@example.com")
+ok "mail message sets From/To/Subject headers",
+   msg.include?("From: me@example.com") && msg.include?("To: you@example.com") &&
+   msg.include?("Subject: Kamandar daily:")
+ok "mail message has an RFC-2822 Date", msg.include?("Date: #{TODAY.rfc2822}")
+ok "mail message uses CRLF line endings", msg.include?("\r\n")
+ok "mail message separates headers from body with a blank line", msg.include?("\r\n\r\n")
+ok "mail message leaks no token", !msg.include?(SECRET)
+
+# Config.from lifts SMTP_* / MAIL_* into a :mail hash (STARTTLS on by default).
+mcfg = Kamandar::Config.from(
+  env: { "GITHUB_TOKEN" => "t", "GH_LOGIN" => "me", "SMTP_HOST" => "smtp.example.com",
+         "SMTP_USER" => "bot@example.com", "SMTP_PASS" => "pw", "MAIL_TO" => "me@example.com",
+         "KAMANDAR_CONFIG" => "/does/not/exist" }, argv: []
+)[:mail]
+check "config: SMTP host", mcfg[:host], "smtp.example.com"
+check "config: SMTP port defaults to 587", mcfg[:port], 587
+check "config: STARTTLS on by default", mcfg[:tls], true
+check "config: MAIL_FROM falls back to SMTP_USER", mcfg[:from], "bot@example.com"
+check "config: MAIL_TO honoured", mcfg[:to], "me@example.com"
+tls_off = Kamandar::Config.from(
+  env: { "SMTP_TLS" => "false", "KAMANDAR_CONFIG" => "/does/not/exist" }, argv: []
+)[:mail]
+check "config: SMTP_TLS=false disables STARTTLS", tls_off[:tls], false
+
 # --- Demo data --------------------------------------------------------------
 DEMO = Kamandar::Demo
 %w[project global].each do |dmode|
