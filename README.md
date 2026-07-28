@@ -254,7 +254,7 @@ Kamandar/
 | `BLOCKED_STATUSES` | | `Blocked,On Hold,Waiting` | Status names treated as "blocked" (case-insensitive) — bucket #6 |
 | `ITERATION_FILTER` | | `off` | `current` restricts #3 to the active sprint |
 | `ITERATION_FIELD` | | `Iteration` | Board's iteration field name |
-| `STALE_DAYS` | | `2` | Threshold (in days) for bucket #7. `--init` prompts for it; the `--serve` dashboard has a **Stale after** field that overrides it live (per request, via `?stale=N`) |
+| `STALE_DAYS` | | `0` | Age gate for bucket #7. `0` (default) shows **every** PR that's gone quiet; `N≥1` shows only those quiet for ≥ N days. Negatives clamped to `0`. `--init` prompts for it; the `--serve` dashboard has a **Stale after** field that overrides it live for `N≥1` (per request, via `?stale=N`) |
 | `IGNORE_OLDER_THAN` / `--ignore-older-than N` | | `0` (off) | Hide any issue/PR untouched for more than N **calendar** days (last-activity `updatedAt`). Applies to every bucket and surface; `0`/unset shows everything. Handy for pruning cold work from a busy queue |
 | `DAY_MODE` | | `business` | `business` (skip Sat/Sun) or `calendar` |
 | `THEME` / `--theme` | | — | `matrix` renders a green-on-black boxed TUI (terminal only; pipes stay plain) |

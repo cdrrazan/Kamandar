@@ -122,6 +122,9 @@ ok "#4.5 approved then pushed -> stale", E.stale?(p5, **STALE)
 p6 = pr(created: D.(2026, 6, 18), last_request: D.(2026, 6, 22),
         review_requests_total: 1)
 ok "#4.6 requested today -> not stale", !E.stale?(p6, **STALE)
+# stale_days:0 = show all — even a PR requested today (quiet 0 days) counts.
+ok "#4.6b stale_days:0 flags a PR quiet 0 days (show all)",
+   E.stale?(p6, stale_days: 0, mode: "business", today: TODAY)
 
 # 7. draft PR -> not stale
 p7 = pr(isDraft: true, created: D.(2026, 6, 15), last_request: D.(2026, 6, 16),
@@ -380,6 +383,12 @@ Dir.mktmpdir("kamandar-cfg") do |dir|
   check "config file: feeds token into config", cfg_file[:token],       "tok_from_file"
   check "config file: feeds login into config", cfg_file[:login],       "filelogin"
   check "config file: feeds stale_days",        cfg_file[:stale_days],  5
+
+  # STALE_DAYS: default 0 (show all), negatives never allowed (clamped to 0).
+  check "config: STALE_DAYS defaults to 0 (show all)",
+        Kamandar::Config.from(env: { "KAMANDAR_CONFIG" => File.join(dir, "nope") }, argv: [])[:stale_days], 0
+  check "config: negative STALE_DAYS clamped to 0",
+        Kamandar::Config.from(env: { "STALE_DAYS" => "-3", "KAMANDAR_CONFIG" => File.join(dir, "nope") }, argv: [])[:stale_days], 0
 
   # Real ENV (present + non-empty) wins over the file.
   cfg_override = Kamandar::Config.from(
@@ -759,6 +768,9 @@ check "resolve_scope carries poll", proj[:poll], 30
 check "resolve_scope carries stale override",
       SRV.resolve_scope({ "stale" => "7" }, project_org: nil)[:stale], 7
 check "resolve_scope stale nil when absent", glob[:stale], nil
+check "resolve_scope keeps stale 0", SRV.resolve_scope({ "stale" => "0" }, project_org: nil)[:stale], 0
+check "resolve_scope drops a negative stale (never allowed)",
+      SRV.resolve_scope({ "stale" => "-4" }, project_org: nil)[:stale], nil
 
 # self_link: round-trips the current selection, dropping empties.
 check "self_link with no selection -> /", SURF.self_link("global", "", "", 0), "/"
@@ -789,8 +801,8 @@ ok "tools row lives below the brand row",
    page.index(%(<div class="bar bar-main">)) < page.index(%(<div class="bar bar-tools">))
 ok "server page has a refresh control", page.include?(%(class="btn-refresh")) && page.include?("↻")
 ok "server page reflects poll interval", page.include?(%(http-equiv="refresh" content="60"))
-ok "server page loads the Google Sans + JetBrains Mono webfonts",
-   page.include?("family=Google+Sans") && page.include?("JetBrains+Mono") &&
+ok "server page loads Google Sans as the only webfont",
+   page.include?("family=Google+Sans") && !page.include?("JetBrains+Mono") &&
    page.include?(%(<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>))
 ok "server page applies Google Sans in CSS", page.include?(%(--sans:"Google Sans")) &&
                                              page.include?("font-family:var(--sans)")
@@ -936,8 +948,9 @@ ok "live server response never carries the token", !served.include?(SECRET)
 # =============================================================================
 # Issue+PR scope (global/org/repo): assigned issues classified by linked PR
 # =============================================================================
-def linked_pr(draft: false, reviewer: false)
+def linked_pr(draft: false, reviewer: false, url: nil)
   {
+    "url" => url,
     "isDraft" => draft,
     "reviewRequests" => { "totalCount" => reviewer ? 1 : 0 },
     "timelineItems" => { "nodes" => [] },
@@ -989,6 +1002,22 @@ check "issue mode: no reviewer bucket",   issue_buckets[:assigned_no_reviewer].m
 check "issue mode: reviews owed kept",    issue_buckets[:reviews_owed].map { |r| r[:number] }, [101]
 check "issue mode: gone quiet kept",      issue_buckets[:stale].map { |r| r[:number] }, [202]
 ok "issue mode: no board-only keys",      !issue_buckets.key?(:in_qa) && !issue_buckets.key?(:blocked)
+
+# Global folds your own ready PRs with no reviewer into "no reviewer" (parity
+# with project's forgot_reviewer), deduped against PRs already reached via an
+# assigned issue so nothing is counted twice.
+nr_free   = pr(number: 501, url: "https://github.com/o/r/pull/501", created: D.(2026, 6, 19)) # ready, no reviewer, unlinked
+nr_linked = pr(number: 502, url: "https://github.com/o/r/pull/502", created: D.(2026, 6, 19)) # same PR the issue links
+nr_issue  = issue_node(number: 9, linked: [linked_pr(reviewer: false, url: "https://github.com/o/r/pull/502")])
+nr_buckets = E.classify(owed_prs: [], my_prs: [nr_free, nr_linked],
+                        assigned_issues: [nr_issue], config: issue_config, today: TODAY)
+check "issue mode: own ready no-reviewer PR folded into no-reviewer",
+      nr_buckets[:assigned_no_reviewer].map { |r| r[:number] }.sort, [9, 501]
+check "issue mode: PR already linked to an assigned issue not double-counted",
+      nr_buckets[:assigned_no_reviewer].count { |r| r[:url].include?("/pull/502") }, 0
+check "issue mode: PRs with a reviewer stay out of no-reviewer",
+      E.classify(owed_prs: [], my_prs: [pr(number: 601, created: D.(2026, 6, 19), review_requests_total: 1)],
+                 assigned_issues: [], config: issue_config, today: TODAY)[:assigned_no_reviewer], []
 
 # issue-mode HTML renders the issue bucket set, not the board set
 issue_html = B.render(issue_buckets, config: issue_config, generated_at: TODAY)

@@ -98,9 +98,11 @@
 #   BLOCKED_STATUSES      (Blocked,On Hold,Waiting)  statuses for bucket #6
 #   ITERATION_FILTER      (off)       `current` restricts #3 to the active sprint
 #   ITERATION_FIELD       (Iteration) board's iteration field name
-#   STALE_DAYS            (2)         threshold for bucket #7. --init prompts for
-#                                     it; --serve has a live "Stale after Nd"
-#                                     field (?stale=N override, no persist)
+#   STALE_DAYS            (0)         age gate for bucket #7. 0 = show every PR
+#                                     gone quiet; N>=1 = only those quiet >= N
+#                                     days. Negatives clamped to 0. --init prompts
+#                                     for it; --serve has a live "Stale after Nd"
+#                                     field (?stale=N override for N>=1, no persist)
 #   SMTP_HOST/PORT/USER/PASS (—/587)  --email daily summary: SMTP submission.
 #   SMTP_TLS              (true)       STARTTLS on the submission connection
 #   MAIL_FROM / MAIL_TO   (=SMTP_USER) sender + recipient of the digest email
@@ -560,6 +562,7 @@ module Kamandar
     # Fields for the PR(s) linked to an assigned issue via "Closes #N" — enough
     # to reuse has_reviewer? for the in-review vs no-reviewer split.
     LINKED_PR_FIELDS = <<~GQL
+      url
       isDraft
       reviewRequests(first: 1) { totalCount }
       timelineItems(itemTypes: [REVIEW_REQUESTED_EVENT], last: 1) {
@@ -810,12 +813,23 @@ module Kamandar
       grouped = Hash.new { |h, k| h[k] = [] }
       assigned_issues.each { |iss| grouped[issue_pr_state(iss)] << normalize_issue(iss) }
 
+      # Global's assigned_* buckets are issue-centric — they only see PRs reached
+      # through an assigned issue. A ready PR of yours with no reviewer that isn't
+      # linked to an assigned issue would fall through (project mode catches it via
+      # forgot_reviewer on my_prs). Fold those PRs into "no reviewer" too, skipping
+      # any already represented by their assigned issue (dedupe on the PR url).
+      linked_urls = assigned_issues.flat_map { |iss| linked_prs(iss) }
+                                   .map { |pr| pr["url"] }.compact
+      extra_no_reviewer = my_prs.select { |pr| forgot_reviewer?(pr) }
+                                .reject { |pr| linked_urls.include?(pr["url"]) }
+                                .map { |pr| normalize_pr(pr) }
+
       {
         reviews_owed: reviews_owed,
         assigned_todo: grouped[:not_started],
         assigned_wip: grouped[:draft],
         assigned_review: grouped[:in_review],
-        assigned_no_reviewer: grouped[:no_reviewer],
+        assigned_no_reviewer: grouped[:no_reviewer] + extra_no_reviewer,
         stale: stale
       }
     end
@@ -1411,10 +1425,10 @@ module Kamandar
       assigned_todo: "Issues assigned to you with no linked PR yet — not started.",
       assigned_wip: "Assigned issues whose linked PR is still a draft.",
       assigned_review: "Assigned issues whose PR is ready and has a reviewer.",
-      assigned_no_reviewer: "Assigned issues whose ready PR has no reviewer requested."
+      assigned_no_reviewer: "Ready PRs with no reviewer requested — your assigned issues' PRs, plus your own open PRs."
     }.freeze
 
-    # Google Sans (UI) + JetBrains Mono (numbers/paths) webfonts. Served
+    # Google Sans — the app's single typeface (UI, numbers, paths). Served
     # pages have network access (live localhost), so a CDN link is fine here —
     # unlike BrowserSurface, which must stay self-contained for offline file://
     # use. Falls back to the system stack in extra_css if the fonts don't load.
@@ -1422,7 +1436,7 @@ module Kamandar
       <link rel="icon" type="image/x-icon" href="/favicon.ico">
       <link rel="preconnect" href="https://fonts.googleapis.com">
       <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-      <link href="https://fonts.googleapis.com/css2?family=Google+Sans:ital,opsz,wght@0,17..18,400..700;1,17..18,400..700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+      <link href="https://fonts.googleapis.com/css2?family=Google+Sans:ital,opsz,wght@0,17..18,400..700;1,17..18,400..700&display=swap" rel="stylesheet">
     HTML
 
     # The full live page: header chips + a control bar + the bucket sections.
@@ -1499,9 +1513,9 @@ module Kamandar
                 <span class="pollicon">↻</span><span class="polltext">Auto-refresh</span>
                 <input type="number" name="poll" value="#{poll.to_i}" min="0" step="5" aria-label="Auto-refresh seconds"><span class="pollunit">s</span>
               </label>
-              <label class="field f-stale pollbox" title="Days a PR can sit quiet before it counts as stale">
+              <label class="field f-stale pollbox" title="Days a PR can sit quiet before it counts as stale — 0 shows all">
                 <span class="pollicon">⏳</span><span class="polltext">Stale after</span>
-                <input type="number" name="stale" value="#{config[:stale_days].to_i}" min="1" step="1" aria-label="Stale threshold in days"><span class="pollunit">d</span>
+                <input type="number" name="stale" value="#{config[:stale_days].to_i}" min="0" step="1" aria-label="Stale threshold in days — 0 shows all"><span class="pollunit">d</span>
               </label>
               <button class="btn-apply" type="submit">Apply</button>
               <a class="btn-refresh" href="#{esc.call(self_link(mode, name, project_url, poll, stale))}" title="Refresh now">↻ Refresh</a>
@@ -1539,7 +1553,7 @@ module Kamandar
           <div class="card">
             <div class="card-head"><span class="eyebrow">Your work</span><span class="openpill#{mine_open.zero? ? ' z' : ''}">#{mine_open} open</span></div>
             <div class="lane-list">#{mine.map { |k, t, _| lane.call(k, t) }.join}</div>
-            <div class="card-foot"><span class="mono">scope: #{esc.call(scope_label)}</span><span class="mono">#{repos} repo#{repos == 1 ? '' : 's'}</span></div>
+            <div class="card-foot"><span>scope: #{esc.call(scope_label)}</span><span>#{repos} repo#{repos == 1 ? '' : 's'}</span></div>
           </div>
         </aside>
       ASIDE
@@ -1584,15 +1598,9 @@ module Kamandar
     # JavaScript. Every section stays in the DOM (and anchored) for those links.
     def sections_html(buckets, meta_list, now:)
       esc  = BrowserSurface.method(:escape)
-      tabs = meta_list.map do |key, title, _empty|
-        n = (buckets[key] || []).size
-        %(<a class="mtab mt-#{key}" href="#sec-#{key}">) +
-          %(<span class="mt-nm">#{esc.call(SHORT_LABELS[key] || title)}</span>) +
-          %(<span class="mt-n#{n.zero? ? ' z' : ''}">#{n}</span></a>)
-      end.join
-      nav = %(<nav class="mtabs" role="tablist" aria-label="Buckets">#{tabs}</nav>)
-
-      secs = meta_list.map do |key, title, empty|
+      # Only the targeted section shows (reviews_owed by default); the left-rail
+      # lanes and right-rail glance bars switch sections via #sec-<key> :target.
+      meta_list.map do |key, title, empty|
         rows = buckets[key] || []
         meta = BrowserSurface::BUCKET_META[key] || { icon: "•", color: "#8b9099" }
         desc = DESCRIPTIONS[key]
@@ -1609,7 +1617,6 @@ module Kamandar
         %(<section class="sec#{key == :stale ? ' warn' : ''}" id="sec-#{key}" style="--c:#{meta[:color]}">) +
           head + %(<div class="rows">#{body}</div></section>)
       end.join("\n")
-      nav + secs
     end
 
     # A single queue row — real fields only.
@@ -1766,15 +1773,10 @@ module Kamandar
     end
 
     # The full self-contained design system for the live web app — ported from
-    # the Kamandar Claude Design mockup (Google Sans + JetBrains Mono, oklch
+    # the Kamandar Claude Design mockup (Google Sans throughout, oklch
     # palette, 3-column grid). Theme-aware via prefers-color-scheme. No external
     # assets beyond the webfont links; every panel is fed by real bucket data.
     def extra_css
-      # Active-tab highlight, generated per bucket: a tab lights up when its
-      # section is the :target (and reviews_owed lights up when nothing is).
-      keys       = BrowserSurface::BUCKET_META.keys
-      tab_active = (keys.map { |k| ".main:has(#sec-#{k}:target) .mt-#{k}" } +
-                    [".main:not(:has(.sec:target)) .mt-reviews_owed"]).join(",")
       <<~CSS
         :root{
           --bg:#f4f5f7;--surface:#fff;--ink:#14161a;--ink2:#2b3038;--muted:#6b7280;--muted2:#8b9099;
@@ -1783,8 +1785,8 @@ module Kamandar
           --accent-bg:oklch(0.97 0.02 262);--accent-bd:oklch(0.9 0.05 262);
           --good:oklch(0.62 0.15 150);--good-bg:oklch(0.96 0.03 150);--good-bd:oklch(0.9 0.06 150);
           --warn:oklch(0.58 0.16 45);--warn-bg:oklch(0.96 0.04 50);--warn-bd:oklch(0.9 0.06 50);
-          --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
           --sans:"Google Sans","Helvetica Neue",Helvetica,-apple-system,BlinkMacSystemFont,Arial,sans-serif;
+          --mono:var(--sans); /* one font across the app (was JetBrains Mono) */
         }
         @media (prefers-color-scheme:dark){:root{
           --bg:#0e1116;--surface:#161b22;--ink:#e6edf3;--ink2:#c9d1d9;--muted:#8b949e;--muted2:#6e7681;
@@ -1837,7 +1839,7 @@ module Kamandar
         .pollbox:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 16%,transparent)}
         .pollicon{color:var(--accent);font-size:15px;line-height:1}
         .polltext{font-size:13px;font-weight:600;color:var(--muted)}
-        .pollbox input{width:46px;height:22px;text-align:center;font-family:var(--mono);font-size:13px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);min-width:0;padding:0}
+        .pollbox input{width:64px;height:22px;text-align:center;font-family:var(--mono);font-size:13px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);min-width:0;padding:0 4px}
         .pollbox input:focus{outline:none;border-color:var(--accent)}
         .pollunit{font-size:13px;color:var(--muted2)}
         .btn-apply{border:none;background:var(--accent);color:#fff;font:600 13px var(--sans);height:30px;padding:0 15px;border-radius:8px;cursor:pointer;box-shadow:0 1px 2px rgba(16,24,40,.14);transition:background .12s}
@@ -1849,7 +1851,11 @@ module Kamandar
 
         /* ---------- layout ---------- */
         .shell{max-width:1440px;margin:0 auto;padding:22px 28px 48px;display:grid;grid-template-columns:248px minmax(0,1fr) 300px;gap:20px;align-items:start}
-        .rail{display:flex;flex-direction:column;gap:14px;position:sticky;top:112px}
+        /* Rails pin below the sticky header; if a rail is taller than the space
+           between header and the fixed footer it scrolls inside itself, so the
+           sidebars stay put and only the middle column scrolls the page. */
+        .rail{display:flex;flex-direction:column;gap:14px;position:sticky;top:112px;
+              max-height:calc(100vh - 184px);overflow-y:auto;scrollbar-width:thin;padding-right:2px}
         .main{display:flex;flex-direction:column;gap:18px;min-width:0}
 
         /* ---------- cards / rails ---------- */
@@ -1867,7 +1873,7 @@ module Kamandar
         .lname{font-size:14.5px;font-weight:500;flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
         .lcount{font-size:12px;font-weight:700;color:#fff;background:var(--c);border-radius:20px;padding:1px 8px;min-width:20px;text-align:center}
         .lane.empty .lcount{color:var(--muted2);background:var(--line2);font-weight:600}
-        .card-foot{border-top:1px solid var(--line2);padding:10px 14px;display:flex;align-items:center;justify-content:space-between}
+        .card-foot{border-top:1px solid var(--line2);padding:10px 14px;display:flex;align-items:center;justify-content:space-between;font-size:12.5px;font-weight:500;color:var(--muted)}
 
         /* ---------- KPI row ---------- */
         .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
@@ -1876,19 +1882,9 @@ module Kamandar
         .kpi-v{font-size:28px;font-weight:600;letter-spacing:-.03em;color:var(--ink);font-family:var(--mono);line-height:1}
         .kpi-s{font-size:12.5px;color:var(--muted2)}
 
-        /* ---------- main tabs ---------- */
-        .mtabs{display:flex;flex-wrap:wrap;gap:6px;padding:5px;background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:0 1px 2px rgba(16,24,40,.04)}
-        .mtab{display:inline-flex;align-items:center;gap:7px;padding:7px 12px;border-radius:8px;color:var(--muted);font-size:14px;font-weight:500;transition:background .12s,color .12s}
-        .mtab:hover{background:var(--line2);color:var(--ink)}
-        .mt-nm{letter-spacing:-.01em}
-        .mt-n{font-family:var(--mono);font-size:12px;font-weight:700;color:var(--muted2);background:var(--line2);border-radius:20px;padding:1px 7px;min-width:20px;text-align:center}
-        .mt-n.z{opacity:.7}
-        #{tab_active}{background:var(--accent-bg);color:var(--accent)}
-        #{keys.map { |k| ".main:has(#sec-#{k}:target) .mt-#{k} .mt-n" }.join(",")},
-        .main:not(:has(.sec:target)) .mt-reviews_owed .mt-n{background:var(--accent);color:#fff;opacity:1}
-
         /* ---------- sections ---------- */
-        /* Only the targeted section shows; reviews_owed is the default tab. */
+        /* Only the targeted section shows; reviews_owed is the default. Rail
+           lanes + glance bars switch sections via #sec-<key> :target — no JS. */
         .sec{display:none}
         .main:not(:has(.sec:target)) #sec-reviews_owed{display:block}
         .sec:target{display:block}
@@ -1952,6 +1948,14 @@ module Kamandar
         .f-sep{color:#d2d6dc}
         .f-gh{font-weight:500}
         .shell-error{min-height:46vh}
+
+        /* Title-case the app's own chrome labels only — capitalize uppercases
+           each word's first letter without lowercasing the rest (so "GitHub"
+           stays "GitHub"). Never applied to PR titles, repo names, @login, or
+           issue text — those keep their real casing. */
+        .lname,.g-name,.sec-title,.card-title,.f-title,.kpi-s,.daymeta,.totalmeta,
+        .openpill,.card-foot,.m-updated,.waitchip,.ow-age,.foot-in{text-transform:capitalize}
+        .f-brand{text-transform:none} /* keep "v1.0.0" intact */
 
         /* ---------- responsive ---------- */
         @media (max-width:1180px){
@@ -2225,10 +2229,13 @@ module Kamandar
         end
       scope = Engine.parse_scope(raw, project_org: project_org)
       st    = query["stale"].to_s.strip
+      sv    = st.to_i
+      # nil = fall back to configured STALE_DAYS. Negatives are never allowed;
+      # only a threshold >= 1 overrides (0 = the show-all default, see serve_queue).
       { scope: scope, mode: mode, name: name,
         project_url: query["project_url"].to_s.strip,
         poll: query["poll"].to_i,
-        stale: st.empty? ? nil : st.to_i } # nil = fall back to configured STALE_DAYS
+        stale: (st.empty? || sv.negative?) ? nil : sv }
     end
   end
 
@@ -2404,7 +2411,9 @@ module Kamandar
         blocked_statuses: blocked_statuses,
         iteration_filter: (env["ITERATION_FILTER"] || "off"),
         iteration_field: (env["ITERATION_FIELD"] || "Iteration"),
-        stale_days: (env["STALE_DAYS"] || "2").to_i,
+        # 0 (default) = show every gone-quiet PR, no age gate; N>=1 = only PRs
+        # quiet for >= N days. Negatives are clamped to 0 (never allowed).
+        stale_days: [(env["STALE_DAYS"] || "0").to_i, 0].max,
         ignore_older_than: (flags[:ignore_older_than] || env["IGNORE_OLDER_THAN"] || "0").to_i,
         day_mode: (env["DAY_MODE"] || "business"),
         output_env: (env["OUTPUT"] || "terminal"),
