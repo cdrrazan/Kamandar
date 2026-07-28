@@ -789,10 +789,11 @@ ok "tools row lives below the brand row",
    page.index(%(<div class="bar bar-main">)) < page.index(%(<div class="bar bar-tools">))
 ok "server page has a refresh control", page.include?(%(class="btn-refresh")) && page.include?("↻")
 ok "server page reflects poll interval", page.include?(%(http-equiv="refresh" content="60"))
-ok "server page loads the Instrument Sans + JetBrains Mono webfonts",
-   page.include?("family=Instrument+Sans") && page.include?("JetBrains+Mono") &&
+ok "server page loads the Google Sans + JetBrains Mono webfonts",
+   page.include?("family=Google+Sans") && page.include?("JetBrains+Mono") &&
    page.include?(%(<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>))
-ok "server page applies Instrument Sans in CSS", page.include?(%(font-family:"Instrument Sans"))
+ok "server page applies Google Sans in CSS", page.include?(%(--sans:"Google Sans")) &&
+                                             page.include?("font-family:var(--sans)")
 # poll>0 shows a live badge; header carries the user + monogram avatar.
 ok "server page shows a live badge when polling", page.include?(%(<span class="livebadge">)) &&
                                                   page.include?("Live · every 60s")
