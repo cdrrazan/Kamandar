@@ -1793,7 +1793,7 @@ module Kamandar
         .bar-tools{flex-wrap:wrap;gap:8px;padding:10px 0 12px;border-top:1px solid var(--line2)}
         .brand{display:flex;align-items:center;gap:10px;color:var(--ink)}
         .brand:hover{color:var(--ink)}
-        .logo{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;color:#fff;font-size:15px;line-height:1;font-weight:700;letter-spacing:-.02em}
+        .logo{width:26px;height:26px;display:flex;align-items:center;justify-content:center;font-size:19px;line-height:1}
         .bname{font-size:16px;font-weight:600;letter-spacing:-.02em}
         .vpill{font-family:var(--mono);font-size:10px;color:var(--muted2);border:1px solid var(--line);border-radius:5px;padding:2px 5px}
         .seg{display:inline-flex;align-items:center;gap:2px;background:var(--line2);border:1px solid var(--line);border-radius:9px;padding:3px}
