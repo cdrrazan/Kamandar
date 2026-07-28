@@ -51,10 +51,11 @@ end
 # Build a PR node hash mirroring the GraphQL shape.
 def pr(isDraft: false, created:, last_push: nil, last_request: nil,
        reviews: [], review_requests_total: 0, number: 1, title: "PR",
-       url: "https://github.com/o/r/pull/1", repo: "o/r")
+       url: "https://github.com/o/r/pull/1", repo: "o/r", updated: nil)
   {
     "number" => number, "title" => title, "url" => url, "isDraft" => isDraft,
     "reviewDecision" => nil, "createdAt" => iso(created),
+    "updatedAt" => updated ? iso(updated) : nil,
     "repository" => { "nameWithOwner" => repo },
     "reviewRequests" => { "totalCount" => review_requests_total },
     "commits" => { "nodes" => last_push ? [{ "commit" => { "committedDate" => iso(last_push) } }] : [] },
@@ -65,7 +66,7 @@ def pr(isDraft: false, created:, last_push: nil, last_request: nil,
   }
 end
 
-def item(login:, status:, typename: "Issue", number: 1)
+def item(login:, status:, typename: "Issue", number: 1, updated: nil)
   {
     "fieldValues" => {
       "nodes" => [
@@ -76,6 +77,7 @@ def item(login:, status:, typename: "Issue", number: 1)
     "content" => {
       "__typename" => typename, "number" => number, "title" => "Issue #{number}",
       "url" => "https://github.com/o/r/issues/#{number}", "state" => "OPEN",
+      "updatedAt" => updated ? iso(updated) : nil,
       "assignees" => { "nodes" => [{ "login" => login }] },
       "repository" => { "nameWithOwner" => "o/r" }
     }
@@ -428,6 +430,19 @@ check "config --no-open off by default",
       Kamandar::Config.from(env: {}, argv: [])[:no_open], false
 check "config --no-open sets no_open",
       Kamandar::Config.from(env: {}, argv: ["--serve", "--no-open"])[:no_open], true
+
+# IGNORE_OLDER_THAN: 0 (off) by default; ENV sets it; CLI flag wins over ENV.
+check "config ignore_older_than defaults to 0",
+      Kamandar::Config.from(env: {}, argv: [])[:ignore_older_than], 0
+check "config ignore_older_than from ENV",
+      Kamandar::Config.from(env: { "IGNORE_OLDER_THAN" => "30" }, argv: [])[:ignore_older_than], 30
+check "config ignore_older_than flag (space)",
+      Kamandar::Config.from(env: {}, argv: ["--ignore-older-than", "45"])[:ignore_older_than], 45
+check "config ignore_older_than flag (=)",
+      Kamandar::Config.from(env: {}, argv: ["--ignore-older-than=60"])[:ignore_older_than], 60
+check "config ignore_older_than flag beats ENV",
+      Kamandar::Config.from(env: { "IGNORE_OLDER_THAN" => "30" },
+                            argv: ["--ignore-older-than=7"])[:ignore_older_than], 7
 
 # -- interactive scope picker -------------------------------------------------
 # Feeds canned stdin; captures the prompt on a StringIO so nothing hits stderr.
@@ -861,10 +876,11 @@ def linked_pr(draft: false, reviewer: false)
   }
 end
 
-def issue_node(number:, title: "Issue", repo: "o/r", linked: [])
+def issue_node(number:, title: "Issue", repo: "o/r", linked: [], updated: nil)
   {
     "number" => number, "title" => title,
     "url" => "https://github.com/o/r/issues/#{number}",
+    "updatedAt" => updated ? iso(updated) : nil,
     "repository" => { "nameWithOwner" => repo },
     "closedByPullRequestsReferences" => { "nodes" => linked }
   }
@@ -909,6 +925,65 @@ ok "issue mode: no board-only keys",      !issue_buckets.key?(:in_qa) && !issue_
 issue_html = B.render(issue_buckets, config: issue_config, generated_at: TODAY)
 ok "issue HTML shows issue bucket heading", issue_html.include?("Assigned, PR in review")
 ok "issue HTML omits board-only heading", !issue_html.include?("In QA")
+
+# =============================================================================
+# IGNORE_OLDER_THAN — hide issues/PRs untouched for > N calendar days
+# TODAY = Mon 2026-06-22. Filter is applied uniformly in Engine.classify, so
+# every surface inherits it. 0/unset = show all. Rows with no updatedAt (demo)
+# are always kept.
+# =============================================================================
+recency_owed = [
+  pr(number: 101, title: "Fresh",     url: "https://github.com/o/r/pull/101", created: D.(2026, 6, 1),  updated: D.(2026, 6, 20)), #  2d -> keep
+  pr(number: 110, title: "Boundary",  url: "https://github.com/o/r/pull/110", created: D.(2026, 6, 1),  updated: D.(2026, 6, 12)), # 10d -> keep (not > 10)
+  pr(number: 109, title: "Cold",      url: "https://github.com/o/r/pull/109", created: D.(2026, 5, 1),  updated: D.(2026, 6, 5)),  # 17d -> drop
+  pr(number: 200, title: "No stamp",  url: "https://github.com/o/r/pull/200", created: D.(2026, 6, 1),  updated: nil)             # no updatedAt -> keep
+]
+recency_issues = [
+  issue_node(number: 1, linked: [], updated: D.(2026, 6, 21)), #  1d -> keep
+  issue_node(number: 5, linked: [], updated: D.(2026, 5, 20))  # 33d -> drop
+]
+
+# Filter ON (10 days).
+rc_on = { login: "me", scope: { mode: "global" }, stale_days: 2,
+          day_mode: "business", ignore_older_than: 10 }
+b_on = E.classify(owed_prs: recency_owed, my_prs: [],
+                  assigned_issues: recency_issues, config: rc_on, today: TODAY)
+check "ignore_older_than: keeps fresh + boundary + no-stamp, drops cold",
+      b_on[:reviews_owed].map { |r| r[:number] }.sort, [101, 110, 200]
+check "ignore_older_than: drops the stale assigned issue",
+      b_on[:assigned_todo].map { |r| r[:number] }, [1]
+
+# Filter OFF (0) -> everything shown, including the cold ones.
+rc_off = rc_on.merge(ignore_older_than: 0)
+b_off = E.classify(owed_prs: recency_owed, my_prs: [],
+                   assigned_issues: recency_issues, config: rc_off, today: TODAY)
+check "ignore_older_than 0: shows all owed",
+      b_off[:reviews_owed].map { |r| r[:number] }.sort, [101, 109, 110, 200]
+check "ignore_older_than 0: shows all assigned",
+      b_off[:assigned_todo].map { |r| r[:number] }.sort, [1, 5]
+
+# Missing key behaves like off (back-compat with older config hashes).
+b_nokey = E.classify(owed_prs: recency_owed, my_prs: [], assigned_issues: [],
+                     config: rc_on.reject { |k, _| k == :ignore_older_than },
+                     today: TODAY)
+check "ignore_older_than absent: no filtering",
+      b_nokey[:reviews_owed].map { |r| r[:number] }.sort, [101, 109, 110, 200]
+
+# Project scope filters board rows too (normalize_item path).
+proj_recency_cfg = {
+  login: "me", scope: { mode: "project" },
+  not_started: ["Todo"], review_statuses: [], qa_statuses: [], blocked_statuses: [],
+  iteration_filter: "off", iteration_field: "Iteration",
+  stale_days: 2, day_mode: "business", ignore_older_than: 10
+}
+proj_recency_items = [
+  item(login: "me", status: "Todo", number: 1, updated: D.(2026, 6, 21)), #  1d -> keep
+  item(login: "me", status: "Todo", number: 9, updated: D.(2026, 5, 1))   # 52d -> drop
+]
+b_proj = E.classify(owed_prs: [], my_prs: [], project_items: proj_recency_items,
+                    config: proj_recency_cfg, today: TODAY)
+check "ignore_older_than (project): drops cold board card",
+      b_proj[:assigned_not_started].map { |r| r[:number] }, [1]
 
 # =============================================================================
 # Network errors + spinner (CLI robustness)

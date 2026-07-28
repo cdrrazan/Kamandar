@@ -231,6 +231,7 @@ Kamandar/
 | `ITERATION_FILTER` | | `off` | `current` restricts #3 to the active sprint |
 | `ITERATION_FIELD` | | `Iteration` | Board's iteration field name |
 | `STALE_DAYS` | | `2` | Threshold (in days) for bucket #7 |
+| `IGNORE_OLDER_THAN` / `--ignore-older-than N` | | `0` (off) | Hide any issue/PR untouched for more than N **calendar** days (last-activity `updatedAt`). Applies to every bucket and surface; `0`/unset shows everything. Handy for pruning cold work from a busy queue |
 | `DAY_MODE` | | `business` | `business` (skip Sat/Sun) or `calendar` |
 | `THEME` / `--theme` | | — | `matrix` renders a green-on-black boxed TUI (terminal only; pipes stay plain) |
 | `--dashboard` | | off | Full-screen Matrix TUI: digital-rain splash, then live panels (`r` refresh, `q` quit). Needs an interactive TTY; falls back to plain output otherwise |

@@ -97,6 +97,9 @@
 #   ITERATION_FILTER      (off)       `current` restricts #3 to the active sprint
 #   ITERATION_FIELD       (Iteration) board's iteration field name
 #   STALE_DAYS            (2)         threshold for bucket #7
+#   IGNORE_OLDER_THAN     (0=off)     hide any issue/PR untouched for more than
+#     / --ignore-older-than N         N calendar days (declutter cold work; all
+#                                     buckets, every surface). 0/unset = show all
 #   DAY_MODE              (business)  business (skip Sat/Sun) | calendar
 #   THEME / --theme       (—)         `matrix` = green boxed TUI (terminal/TTY
 #                                     only; pipes stay plain)
@@ -512,6 +515,7 @@ module Kamandar
       isDraft
       reviewDecision
       createdAt
+      updatedAt
       repository { nameWithOwner }
       reviewRequests(first: 1) { totalCount }
       commits(last: 1) { nodes { commit { committedDate } } }
@@ -563,6 +567,7 @@ module Kamandar
                 number
                 title
                 url
+                updatedAt
                 repository { nameWithOwner }
                 closedByPullRequestsReferences(first: 5, includeClosedPrs: false) {
                   nodes { #{LINKED_PR_FIELDS} }
@@ -617,12 +622,14 @@ module Kamandar
                       title
                       url
                       state
+                      updatedAt
                       assignees(first: 10) { nodes { login } }
                       repository { nameWithOwner }
                     }
                     ... on PullRequest {
                       number
                       url
+                      updatedAt
                       repository { nameWithOwner }
                     }
                   }
@@ -641,7 +648,8 @@ module Kamandar
         number: pr["number"],
         title: pr["title"],
         url: pr["url"],
-        repo: pr.dig("repository", "nameWithOwner")
+        repo: pr.dig("repository", "nameWithOwner"),
+        updated_at: pr["updatedAt"]
       }.merge(extra)
     end
 
@@ -651,7 +659,8 @@ module Kamandar
         number: content["number"],
         title: content["title"],
         url: content["url"],
-        repo: content.dig("repository", "nameWithOwner")
+        repo: content.dig("repository", "nameWithOwner"),
+        updated_at: content["updatedAt"]
       }
     end
 
@@ -660,7 +669,8 @@ module Kamandar
         number: issue["number"],
         title: issue["title"],
         url: issue["url"],
-        repo: issue.dig("repository", "nameWithOwner")
+        repo: issue.dig("repository", "nameWithOwner"),
+        updated_at: issue["updatedAt"]
       }
     end
 
@@ -707,17 +717,36 @@ module Kamandar
     # every other scope is issue+PR driven. Surfaces never re-query or re-classify.
     #
     # config keys: :scope, :login, :not_started, :review_statuses, :qa_statuses,
-    #              :blocked_statuses, :stale_days, :day_mode, :iteration_filter,
-    #              :iteration_field
+    #              :blocked_statuses, :stale_days, :ignore_older_than, :day_mode,
+    #              :iteration_filter, :iteration_field
     def classify(owed_prs:, my_prs:, project_items: [], assigned_issues: [],
                  iterations: nil, config:, today:)
-      if scope_mode(config) == "project"
-        classify_project(owed_prs: owed_prs, my_prs: my_prs,
-                         project_items: project_items, iterations: iterations,
-                         config: config, today: today)
-      else
-        classify_issue(owed_prs: owed_prs, my_prs: my_prs,
-                       assigned_issues: assigned_issues, config: config, today: today)
+      buckets =
+        if scope_mode(config) == "project"
+          classify_project(owed_prs: owed_prs, my_prs: my_prs,
+                           project_items: project_items, iterations: iterations,
+                           config: config, today: today)
+        else
+          classify_issue(owed_prs: owed_prs, my_prs: my_prs,
+                         assigned_issues: assigned_issues, config: config, today: today)
+        end
+      apply_recency_filter(buckets, config: config, today: today)
+    end
+
+    # Drop rows whose last activity (updatedAt) is older than
+    # config[:ignore_older_than] calendar days — a queue declutter for work
+    # that's gone cold. Unset / 0 disables it, so the default is show-everything.
+    # Calendar days (not DAY_MODE) — "older than 90 days" reads literally.
+    # Rows without an updated_at (e.g. --demo fabricated data) are always kept.
+    def apply_recency_filter(buckets, config:, today:)
+      days = config[:ignore_older_than].to_i
+      return buckets unless days.positive?
+
+      buckets.transform_values do |rows|
+        rows.reject do |row|
+          t = parse_time(row[:updated_at])
+          t && days_since(t, mode: "calendar", today: today) > days
+        end
       end
     end
 
@@ -2068,6 +2097,7 @@ module Kamandar
         iteration_filter: (env["ITERATION_FILTER"] || "off"),
         iteration_field: (env["ITERATION_FIELD"] || "Iteration"),
         stale_days: (env["STALE_DAYS"] || "2").to_i,
+        ignore_older_than: (flags[:ignore_older_than] || env["IGNORE_OLDER_THAN"] || "0").to_i,
         day_mode: (env["DAY_MODE"] || "business"),
         output_env: (env["OUTPUT"] || "terminal"),
         browser_flag: flags[:browser],
@@ -2171,6 +2201,11 @@ module Kamandar
           i += 1
         when /\A--scope=(.+)\z/m
           flags[:scope] = Regexp.last_match(1)
+        when "--ignore-older-than"
+          flags[:ignore_older_than] = argv[i + 1].to_i
+          i += 1
+        when /\A--ignore-older-than=(\d+)\z/
+          flags[:ignore_older_than] = Regexp.last_match(1).to_i
         when "--statuses"
           flags[:statuses] = true
         when "--init"
