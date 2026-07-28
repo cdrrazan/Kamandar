@@ -1372,11 +1372,8 @@ module Kamandar
 
     SCOPE_MODES = %w[global org repo project].freeze
 
-    # Project home — linked from the nav and footer.
+    # Project home — linked from the footer.
     REPO_URL = "https://github.com/cdrrazan/Kamandar"
-
-    # Inline GitHub mark (no external asset; inherits currentColor).
-    GH_ICON = %(<svg class="ghmark" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>)
 
     # Short sidebar tab labels. The panel headings keep the full descriptive
     # title (and it's the navitem's hover tooltip); the narrow sidebar shows
@@ -1406,15 +1403,15 @@ module Kamandar
       assigned_no_reviewer: "Assigned issues whose ready PR has no reviewer requested."
     }.freeze
 
-    # Google Sans webfont. Served pages have network access (live localhost),
-    # so a CDN link is fine here — unlike BrowserSurface, which must stay
-    # self-contained for offline file:// use. Falls back to the system stack
-    # in BrowserSurface.css if the font fails to load.
+    # Instrument Sans (UI) + JetBrains Mono (numbers/paths) webfonts. Served
+    # pages have network access (live localhost), so a CDN link is fine here —
+    # unlike BrowserSurface, which must stay self-contained for offline file://
+    # use. Falls back to the system stack in extra_css if the fonts don't load.
     FONT_LINKS = <<~HTML.chomp
       <link rel="icon" type="image/x-icon" href="/favicon.ico">
       <link rel="preconnect" href="https://fonts.googleapis.com">
       <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-      <link href="https://fonts.googleapis.com/css2?family=Google+Sans:ital,opsz,wght@0,17..18,400..700;1,17..18,400..700&display=swap" rel="stylesheet">
+      <link href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     HTML
 
     # The full live page: header chips + a control bar + the bucket sections.
@@ -1422,31 +1419,14 @@ module Kamandar
     # form re-renders with the user's selection.
     def page(buckets, config:, generated_at:, mode: "global", name: "",
              project_url: "", poll: 0)
-      esc = BrowserSurface.method(:escape)
-      meta_list = Engine.bucket_meta(Engine.scope_mode(config))
-      total = meta_list.sum { |key, _, _| (buckets[key] || []).size }
+      esc         = BrowserSurface.method(:escape)
+      meta_list   = Engine.bucket_meta(Engine.scope_mode(config))
+      total       = meta_list.sum { |key, _, _| (buckets[key] || []).size }
       scope_label = config[:scope] ? Engine.scope_label(config[:scope]) : "global"
-      app = tabbed_html(buckets, meta_list, total: total, scope_label: scope_label)
-      tab_rules = tab_css(meta_list.size) + pager_css(buckets, meta_list)
+      login       = config[:login].to_s
+      now         = generated_at
 
       refresh = poll.to_i > 0 ? %(<meta http-equiv="refresh" content="#{poll.to_i}">) : ""
-
-      # Scope picker as a radio segmented control (not a <select>) so CSS :has()
-      # can reveal only the fields a scope needs — no JavaScript. The server
-      # keeps the chosen scope checked across reloads.
-      segments = SCOPE_MODES.map do |m|
-        ck = m == mode ? " checked" : ""
-        %(<input class="segr" type="radio" name="mode" id="m-#{m}" value="#{m}"#{ck}>) +
-          %(<label class="seglabel" for="m-#{m}">#{m}</label>)
-      end.join
-
-      chips = [
-        %(<span class="chip total">#{total} open</span>),
-        %(<span class="chip">@#{esc.call(config[:login])}</span>),
-        %(<span class="chip">#{esc.call(generated_at.strftime('%H:%M:%S'))}</span>),
-        %(<span class="chip">#{esc.call(config[:day_mode])} days</span>),
-        (poll.to_i > 0 ? %(<span class="chip live">live #{poll.to_i}s</span>) : nil)
-      ].compact.join("\n      ")
 
       <<~HTML
         <!DOCTYPE html>
@@ -1455,200 +1435,278 @@ module Kamandar
         <meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
         #{refresh}
-        <title>Kamandar — @#{esc.call(config[:login])}</title>
+        <title>Kamandar — @#{esc.call(login)}</title>
         #{FONT_LINKS}
-        <style>#{BrowserSurface.css}#{extra_css}#{tab_rules}</style>
+        <style>#{extra_css}</style>
         </head>
         <body>
-        <header class="appbar">
-          <nav class="topbar">
-            <div class="nav-wrap">
-              <a class="brand" href="/"><img class="bow" src="#{BrowserSurface::LOGO_DATA_URI}" alt=""> <span class="brandname">Kamandar</span></a>
-              <div class="meta">
-                #{chips}
-              </div>
-              <a class="ghlink" href="#{REPO_URL}" target="_blank" rel="noopener" title="Kamandar on GitHub">#{GH_ICON}</a>
-            </div>
-          </nav>
-          <div class="toolbar">
-            <form class="controls" method="get" action="/">
-              <span class="seg" role="radiogroup" aria-label="Scope">#{segments}</span>
-              <input class="field f-name" type="text" name="name" value="#{esc.call(name)}" placeholder="org or owner/name">
-              <input class="field f-proj" type="text" name="project_url" value="#{esc.call(project_url)}" placeholder="project board URL">
-              <label class="field f-poll pollbox" title="Auto-refresh interval — 0 turns it off">
-                <span class="pollicon">↻</span>
-                <span class="polltext">Auto-refresh</span>
-                <input type="number" name="poll" value="#{poll.to_i}" min="0" step="5" aria-label="Auto-refresh seconds">
-                <span class="pollunit">s</span>
-              </label>
-              <button type="submit">Apply</button>
-              <a class="refresh" href="#{esc.call(self_link(mode, name, project_url, poll))}" title="Refresh now">↻</a>
-            </form>
-          </div>
-        </header>
-        #{app}
-        <footer class="foot">
-          <div class="foot-wrap">
-            <span class="fbrand"><img class="bow" src="#{BrowserSurface::LOGO_DATA_URI}" alt=""> Kamandar v#{VERSION}</span>
-            <span class="dot">·</span>
-            <span>personal GitHub command center</span>
-            <span class="dot">·</span>
-            <span>127.0.0.1 · stdlib-only Ruby</span>
-            <span class="grow"></span>
-            <a class="ghlink" href="#{REPO_URL}" target="_blank" rel="noopener">#{GH_ICON}<span>GitHub</span></a>
-            <span class="dot">·</span>
-            <span>generated #{esc.call(generated_at.strftime('%H:%M:%S'))}</span>
-          </div>
-        </footer>
+        #{header_html(config, generated_at: now, mode: mode, name: name, project_url: project_url, poll: poll, total: total)}
+        <div class="shell">
+          #{left_rail(buckets, meta_list, scope_label: scope_label, repos: distinct_repos(buckets))}
+          <main class="main">
+            #{kpi_row(buckets, meta_list, now: now, scope_label: scope_label)}
+            #{sections_html(buckets, meta_list, now: now)}
+          </main>
+          #{right_rail(buckets, meta_list, now: now)}
+        </div>
+        #{footer_html(now)}
         </body>
         </html>
       HTML
     end
 
-    # Build the sidebar + tabbed panels. Pure CSS tabs: one hidden radio per
-    # bucket drives which panel shows (`tab_css` generates the per-index rules),
-    # so it works with no JavaScript. The first bucket is selected by default.
-    def tabbed_html(buckets, meta_list, total: 0, scope_label: "global")
+    # ---- header ------------------------------------------------------------
+    # Sticky glass bar: brand + scope segmented control + live/synced badge +
+    # user, over a tools row with the scope fields, Apply/Refresh, and clock.
+    # The whole thing is one GET <form class="controls"> so CSS :has() can
+    # reveal only the fields a scope needs — no JavaScript.
+    def header_html(config, generated_at:, mode:, name:, project_url:, poll:, total:)
+      esc   = BrowserSurface.method(:escape)
+      login = config[:login].to_s
+      day   = config[:day_mode].to_s
+      live  = poll.to_i > 0 ? "Live · every #{poll.to_i}s" : "Synced #{generated_at.strftime('%-I:%M %p')}"
+      segments = SCOPE_MODES.map do |m|
+        ck = m == mode ? " checked" : ""
+        %(<input class="segr" type="radio" name="mode" id="m-#{m}" value="#{m}"#{ck}>) +
+          %(<label class="seglabel" for="m-#{m}">#{m.capitalize}</label>)
+      end.join
+      <<~HEAD
+        <header class="topbar">
+          <form class="controls" method="get" action="/">
+            <div class="bar bar-main">
+              <a class="brand" href="/"><span class="logo">K</span><span class="bname">Kamandar</span><span class="vpill">v#{VERSION}</span></a>
+              <span class="seg" role="radiogroup" aria-label="Scope">#{segments}</span>
+              <span class="grow"></span>
+              <span class="livebadge"><span class="livedot"></span>#{esc.call(live)}</span>
+              <span class="userbox"><span class="ulogin">@#{esc.call(login)}</span><span class="uava">#{esc.call(monogram(login))}</span></span>
+            </div>
+            <div class="bar bar-tools">
+              <input class="field f-name" type="text" name="name" value="#{esc.call(name)}" placeholder="org or owner/name">
+              <input class="field f-proj" type="text" name="project_url" value="#{esc.call(project_url)}" placeholder="project board URL">
+              <label class="field f-poll pollbox" title="Auto-refresh interval — 0 turns it off">
+                <span class="pollicon">↻</span><span class="polltext">Auto-refresh</span>
+                <input type="number" name="poll" value="#{poll.to_i}" min="0" step="5" aria-label="Auto-refresh seconds"><span class="pollunit">s</span>
+              </label>
+              <button class="btn-apply" type="submit">Apply</button>
+              <a class="btn-refresh" href="#{esc.call(self_link(mode, name, project_url, poll))}" title="Refresh now">↻ Refresh</a>
+              <span class="grow"></span>
+              <span class="daymeta">#{esc.call(generated_at.strftime('%H:%M:%S'))} · #{esc.call(day)} days</span>
+              <span class="totalmeta">#{total} open</span>
+            </div>
+          </form>
+        </header>
+      HEAD
+    end
+
+    # ---- left rail ---------------------------------------------------------
+    # Two carded groups of lanes: "Others' work" (reviews you owe) and "Your
+    # work" (everything assigned to you). Each lane anchor-links to its section
+    # in the main column — pure HTML, no JS.
+    def left_rail(buckets, meta_list, scope_label:, repos:)
       esc = BrowserSurface.method(:escape)
-      radios = []
-      items = [] # one {key, size, nav} per bucket, in board order
-      panels = []
-      meta_list.each_with_index do |(key, title, empty), i|
+      lane = lambda do |key, title|
+        n    = (buckets[key] || []).size
+        meta = BrowserSurface::BUCKET_META[key] || { color: "#8b9099" }
+        %(<a class="lane#{n.zero? ? ' empty' : ''}" href="#sec-#{key}" style="--c:#{meta[:color]}">) +
+          %(<span class="ldot"></span><span class="lname">#{esc.call(SHORT_LABELS[key] || title)}</span>) +
+          %(<span class="lcount">#{n}</span></a>)
+      end
+      review, mine = meta_list.partition { |k, _t, _e| REVIEW_KEYS.include?(k) }
+      review_open  = review.sum { |k, _, _| (buckets[k] || []).size }
+      mine_open    = mine.sum { |k, _, _| (buckets[k] || []).size }
+      <<~ASIDE
+        <aside class="rail rail-left">
+          <div class="card">
+            <div class="card-head"><span class="eyebrow">Others' work</span><span class="openpill#{review_open.zero? ? ' z' : ''}">#{review_open} open</span></div>
+            <div class="lane-list">#{review.map { |k, t, _| lane.call(k, t) }.join}</div>
+          </div>
+          <div class="card">
+            <div class="card-head"><span class="eyebrow">Your work</span><span class="openpill#{mine_open.zero? ? ' z' : ''}">#{mine_open} open</span></div>
+            <div class="lane-list">#{mine.map { |k, t, _| lane.call(k, t) }.join}</div>
+            <div class="card-foot"><span class="mono">scope: #{esc.call(scope_label)}</span><span class="mono">#{repos} repo#{repos == 1 ? '' : 's'}</span></div>
+          </div>
+        </aside>
+      ASIDE
+    end
+
+    # ---- KPI row -----------------------------------------------------------
+    # Four stat cards, every number computed from the real buckets — no
+    # fabricated CI/throughput/velocity metrics the engine can't produce.
+    def kpi_row(buckets, meta_list, now:, scope_label:)
+      esc      = BrowserSurface.method(:escape)
+      keys     = meta_list.map(&:first)
+      total    = keys.sum { |k| (buckets[k] || []).size }
+      awaiting = (buckets[:reviews_owed] || []).size
+      yours    = total - awaiting
+      quiet_rows = buckets[:stale] || []
+      repos    = distinct_repos(buckets)
+
+      oldest_owed = (buckets[:reviews_owed] || []).map { |r| Engine.parse_time(r[:updated_at]) }.compact.min
+      owed_sub    = oldest_owed ? "oldest updated #{rel_short(oldest_owed, now)} ago" : "all caught up"
+      max_days    = quiet_rows.map { |r| r[:days].to_i }.max
+      quiet_sub   = quiet_rows.empty? ? "nothing gone quiet" : "oldest #{max_days} #{quiet_rows.first[:mode] || 'business'} days"
+
+      owed_color  = (BrowserSurface::BUCKET_META[:reviews_owed] || {})[:color] || "#0969da"
+      quiet_color = (BrowserSurface::BUCKET_META[:stale] || {})[:color] || "#bc4c00"
+      cards = [
+        ["Awaiting your review", awaiting, owed_sub, owed_color],
+        ["Your open work",       yours,    "across #{repos} repo#{repos == 1 ? '' : 's'}", "#8250df"],
+        ["Gone quiet",           quiet_rows.size, quiet_sub, quiet_color],
+        ["In queue",             total,    "scope: #{esc.call(scope_label)}", "#0969da"]
+      ]
+      body = cards.map do |label, value, sub, color|
+        %(<div class="kpi" style="--c:#{color}"><span class="kpi-l">#{esc.call(label)}</span>) +
+          %(<span class="kpi-v">#{value}</span><span class="kpi-s">#{sub}</span></div>)
+      end.join
+      %(<div class="kpis">#{body}</div>)
+    end
+
+    # ---- main sections -----------------------------------------------------
+    # One section per bucket (anchored for the rail links). Each row is a real
+    # link to the PR/issue with repo · #number · title, last-activity, and (for
+    # the stale bucket) a "quiet N days" chip.
+    def sections_html(buckets, meta_list, now:)
+      esc = BrowserSurface.method(:escape)
+      meta_list.map do |key, title, empty|
         rows = buckets[key] || []
-        meta = BrowserSurface::BUCKET_META[key] || { icon: "•", color: "var(--accent)" }
-        checked = i.zero? ? " checked" : ""
-        radios << %(<input class="tabr" type="radio" name="kt" id="kt-#{i}"#{checked}>)
-        cls = rows.empty? ? "count z" : "count"
-        short = SHORT_LABELS[key] || title
-        nav = %(<label class="navitem" for="kt-#{i}" style="--c:#{meta[:color]}" title="#{esc.call(title)}">) +
-              %(<span class="icon">#{meta[:icon]}</span>) +
-              %(<span class="navtitle">#{esc.call(short)}</span>) +
-              %(<span class="#{cls}">#{rows.size}</span></label>)
-        items << { key: key, size: rows.size, nav: nav }
-        slices = rows.each_slice(PAGE_SIZE).to_a # [] when empty
-        paged = slices.size > 1
+        meta = BrowserSurface::BUCKET_META[key] || { icon: "•", color: "#8b9099" }
+        desc = DESCRIPTIONS[key]
+        head = %(<div class="sec-head"><span class="sec-ic">#{meta[:icon]}</span>) +
+               %(<h2 class="sec-title">#{esc.call(title)}</h2>) +
+               %(<span class="sec-count#{rows.empty? ? ' z' : ''}">#{rows.size}</span>) +
+               (desc ? %(<p class="sec-desc">#{esc.call(desc)}</p>) : "") + "</div>"
         body =
           if rows.empty?
-            <<~EMPTY.chomp
-              <div class="emptybox">
-                <span class="emptyicon">#{meta[:icon]}</span>
-                <p class="emptymsg">#{esc.call(empty)}</p>
-              </div>
-            EMPTY
+            %(<div class="emptybox"><span class="emptyicon">#{meta[:icon]}</span><p class="emptymsg">#{esc.call(empty)}</p></div>)
           else
-            paginated_body(slices, key, i, paged)
+            rows.map { |r| queue_row(r, key, now) }.join
           end
-        classes = +"bucket"
-        classes << " warn" if key == :stale
-        classes << " is-empty" if rows.empty?
-        classes << " paged" if paged
-        desc = DESCRIPTIONS[key]
-        desc_html = desc ? %(<p class="desc">#{esc.call(desc)}</p>) : ""
-        panels << <<~SECTION.chomp
-          <section class="#{classes}" id="kp-#{i}" style="--c:#{meta[:color]}">
-            <h2><span class="icon">#{meta[:icon]}</span> <span class="htitle">#{esc.call(title)}</span> <span class="count">#{rows.size}</span></h2>
-            #{desc_html}
-            #{body}
-          </section>
-        SECTION
+        %(<section class="sec#{key == :stale ? ' warn' : ''}" id="sec-#{key}" style="--c:#{meta[:color]}">) +
+          head + %(<div class="rows">#{body}</div></section>)
+      end.join("\n")
+    end
+
+    # A single queue row — real fields only.
+    def queue_row(row, key, now)
+      esc     = BrowserSurface.method(:escape)
+      updated = rel_short(row[:updated_at], now)
+      sub = []
+      sub << %(<span class="m-updated">updated #{esc.call(updated)} ago</span>) if updated
+      if key == :stale && row[:days]
+        d = row[:days].to_i
+        sub << %(<span class="waitchip">quiet #{d} #{esc.call(row[:mode].to_s)} day#{d == 1 ? '' : 's'}</span>)
       end
+      %(<a class="qrow" href="#{esc.call(row[:url])}" target="_blank" rel="noopener">) +
+        %(<span class="q-rail"></span><span class="q-body">) +
+        %(<span class="q-meta"><span class="q-repo">#{esc.call(row[:repo])}</span><span class="q-sep">/</span><span class="q-num">##{esc.call(row[:number])}</span></span>) +
+        %(<span class="q-title">#{esc.call(row[:title])}</span>) +
+        %(<span class="q-sub">#{sub.join}</span></span>) +
+        %(<span class="q-open">Open ↗</span></a>)
+    end
 
-      # Two boxes: reviews you owe on *other people's* work, and *your own*
-      # assigned issues/PRs. REVIEW_KEYS lists the "others' work" buckets.
-      reviews, mine = items.partition { |it| REVIEW_KEYS.include?(it[:key]) }
-      boxes = [
-        sidebox("Others' work", reviews),
-        sidebox("Your work", mine, foot: scope_label)
-      ].join("\n")
+    # ---- right rail --------------------------------------------------------
+    # Queue-at-a-glance mini bars, an "oldest waiting" list, and a focus card —
+    # all derived from the same buckets (no invented activity feed or history).
+    def right_rail(buckets, meta_list, now:)
+      esc  = BrowserSurface.method(:escape)
+      maxn = meta_list.map { |k, _, _| (buckets[k] || []).size }.max.to_i
+      maxn = 1 if maxn.zero?
+      bars = meta_list.map do |key, title, _e|
+        n     = (buckets[key] || []).size
+        meta  = BrowserSurface::BUCKET_META[key] || { color: "#8b9099" }
+        w     = (n.to_f / maxn * 100).round
+        %(<a class="glance" href="#sec-#{key}" style="--c:#{meta[:color]}">) +
+          %(<span class="g-name">#{esc.call(SHORT_LABELS[key] || title)}</span>) +
+          %(<span class="g-track"><span class="g-fill" style="width:#{w}%"></span></span>) +
+          %(<span class="g-n">#{n}</span></a>)
+      end.join
 
-      <<~APP
-        <div class="app">
-        #{radios.join("\n")}
-        <aside class="sidebar">#{boxes}</aside>
-        <main class="panels">#{panels.join("\n")}</main>
-        </div>
-      APP
+      mine_keys = meta_list.map(&:first).reject { |k| REVIEW_KEYS.include?(k) }
+      pool = mine_keys.flat_map { |k| buckets[k] || [] }
+                      .map { |r| [Engine.parse_time(r[:updated_at]), r] }
+                      .reject { |t, _| t.nil? }
+                      .sort_by { |t, _| t }
+                      .first(5)
+      oldest_card =
+        if pool.empty?
+          ""
+        else
+          items = pool.map do |t, r|
+            %(<a class="ow" href="#{esc.call(r[:url])}" target="_blank" rel="noopener">) +
+              %(<span class="ow-title">#{esc.call(r[:title])}</span>) +
+              %(<span class="ow-age mono">#{esc.call(rel_short(t, now))} ago</span></a>)
+          end.join
+          %(<div class="card"><div class="card-title">Oldest waiting</div><div class="ow-list">#{items}</div></div>)
+        end
+
+      awaiting = (buckets[:reviews_owed] || []).size
+      first    = (buckets[:reviews_owed] || []).first
+      focus =
+        if awaiting.positive? && first
+          %(<div class="card focus"><div class="f-title">Focus block</div>) +
+            %(<p class="f-body">You owe #{awaiting} review#{awaiting == 1 ? '' : 's'}. Clear the queue while it's fresh — start with the oldest.</p>) +
+            %(<a class="f-btn" href="#{esc.call(first[:url])}" target="_blank" rel="noopener">Start reviewing →</a></div>)
+        else
+          %(<div class="card focus clear"><div class="f-title">Inbox zero</div>) +
+            %(<p class="f-body">No reviews waiting on you. Nice.</p></div>)
+        end
+
+      <<~ASIDE
+        <aside class="rail rail-right">
+          <div class="card"><div class="card-title">Queue at a glance</div><div class="glance-list">#{bars}</div></div>
+          #{oldest_card}
+          #{focus}
+        </aside>
+      ASIDE
+    end
+
+    # ---- footer ------------------------------------------------------------
+    def footer_html(now)
+      esc = BrowserSurface.method(:escape)
+      <<~FOOT
+        <footer class="foot">
+          <div class="foot-in">
+            <span class="f-brand">Kamandar v#{VERSION}</span>
+            <span class="f-sep">·</span><span>personal GitHub command center</span>
+            <span class="f-sep">·</span><span class="mono">127.0.0.1 · stdlib-only Ruby</span>
+            <span class="grow"></span>
+            <a class="f-gh" href="#{REPO_URL}" target="_blank" rel="noopener">GitHub</a>
+            <span class="f-sep">·</span><span class="mono">generated #{esc.call(now.strftime('%H:%M:%S'))}</span>
+          </div>
+        </footer>
+      FOOT
+    end
+
+    # Two-letter monogram for the header avatar, from the login.
+    def monogram(login)
+      s = login.to_s.gsub(/[^A-Za-z0-9]/, "")
+      return "?" if s.empty?
+      (s.length >= 2 ? s[0, 2] : s[0, 1]).upcase
+    end
+
+    # Distinct repos across every row — a real "N repos in queue" figure.
+    def distinct_repos(buckets)
+      buckets.values.flatten.map { |r| r[:repo] }.compact.uniq.size
+    end
+
+    # Compact relative age ("41m" / "3h" / "2d") from an ISO timestamp or Time
+    # to `now`. Returns nil when the input is missing/unparseable (e.g. --demo
+    # rows without updatedAt), so the caller just omits that meta.
+    def rel_short(iso, now)
+      t = iso.is_a?(Time) ? iso : Engine.parse_time(iso)
+      return nil unless t
+      secs = (now - t).to_i
+      return "now" if secs < 60
+      return "#{secs / 60}m" if secs < 3600
+      return "#{secs / 3600}h" if secs < 86_400
+      "#{secs / 86_400}d"
+    rescue ArgumentError, TypeError
+      nil
     end
 
     # Buckets that represent *other people's* work (review requested from you),
-    # as opposed to your own assigned issues/PRs. Drives the sidebar split.
+    # as opposed to your own assigned issues/PRs. Drives the left-rail split.
     REVIEW_KEYS = %i[reviews_owed].freeze
-
-    # Cards shown per page within a bucket before pagination kicks in.
-    PAGE_SIZE = 8
-
-    # Render a bucket's cards as paginated pages. When there's only one page,
-    # the cards are emitted plainly. With more, each page is a `.page` div
-    # preceded by hidden radios (one per page) and followed by a numbered pager;
-    # `pager_css` generates the rules that show the chosen page — pure CSS, no JS.
-    def paginated_body(slices, key, panel_index, paged)
-      page_html = slices.map do |slice|
-        slice.map { |row| BrowserSurface.card(row, key) }.join("\n")
-      end
-      return page_html.first unless paged
-
-      pages = page_html.map { |cards| %(<div class="page">#{cards}</div>) }.join("\n")
-      radios = (0...slices.size).map do |p|
-        ck = p.zero? ? " checked" : ""
-        %(<input class="pgr" type="radio" name="pg-#{panel_index}" id="pg-#{panel_index}-#{p}"#{ck}>)
-      end.join
-      labels = (0...slices.size).map do |p|
-        %(<label for="pg-#{panel_index}-#{p}">#{p + 1}</label>)
-      end.join
-      %(#{radios}<div class="pages">#{pages}</div><nav class="pager">#{labels}</nav>)
-    end
-
-    # Per-panel pagination rules: for each paginated bucket, show the page whose
-    # radio is checked and highlight its pager label. Generated to match the
-    # exact page counts in the current data (CSS can't loop).
-    def pager_css(buckets, meta_list)
-      meta_list.each_with_index.flat_map do |(key, _t, _e), i|
-        n = ((buckets[key] || []).size / PAGE_SIZE.to_f).ceil
-        next [] if n <= 1
-
-        (0...n).map do |p|
-          sel = %(#pg-#{i}-#{p}:checked)
-          %(#{sel}~.pages>.page:nth-child(#{p + 1}){display:block}) +
-            %(#{sel}~.pager label[for="pg-#{i}-#{p}"]{background:var(--accent);color:#fff;border-color:var(--accent)})
-        end
-      end.join("\n")
-    end
-
-    # One carded sidebar group: a header (title + open count) and its tabs.
-    # Skipped entirely if the group has no buckets in the current scope.
-    def sidebox(title, items, foot: nil)
-      return "" if items.empty?
-
-      esc = BrowserSurface.method(:escape)
-      open = items.sum { |it| it[:size] }
-      cls = open.zero? ? "chip total z" : "chip total"
-      footer = foot ? %(<div class="side-foot">#{esc.call(foot)}</div>) : ""
-      <<~BOX.chomp
-        <section class="sidebox">
-          <div class="side-head">
-            <span class="side-title">#{esc.call(title)}</span>
-            <span class="#{cls}">#{open} open</span>
-          </div>
-          <nav>#{items.map { |it| it[:nav] }.join("\n")}</nav>
-          #{footer}
-        </section>
-      BOX
-    end
-
-    # Per-index tab rules. CSS can't loop, and the bucket count varies by scope
-    # (project = 8, issue = 6), so the show-panel / highlight-tab pairs are
-    # generated to match the current bucket count.
-    def tab_css(count)
-      (0...count).map do |i|
-        on = %(#kt-#{i}:checked~.sidebar .navitem[for="kt-#{i}"])
-        %(#kt-#{i}:checked~.panels #kp-#{i}{display:block}) +
-          # selected tab: fill with the bucket color, flip text/icon/badge to white
-          %(#{on}{background:var(--c);border-color:var(--c);box-shadow:0 8px 20px -8px color-mix(in srgb,var(--c) 70%,transparent)}) +
-          %(#{on} .navtitle{color:#fff}) +
-          %(#{on} .icon{background:rgba(255,255,255,.22)}) +
-          %(#{on} .count{background:rgba(255,255,255,.26);color:#fff;border:1px solid rgba(255,255,255,.85)})
-      end.join("\n")
-    end
 
     # A tiny error page reusing the same chrome — shown when a fetch fails so the
     # server keeps running instead of dropping the connection.
@@ -1658,15 +1716,16 @@ module Kamandar
         <!DOCTYPE html>
         <html lang="en"><head><meta charset="utf-8">
         <meta name="viewport" content="width=device-width, initial-scale=1">
-        <title>Kamandar — error</title>#{FONT_LINKS}<style>#{BrowserSurface.css}#{extra_css}</style></head>
-        <body><header><div class="wrap">
-          <h1><img class="bow" src="#{BrowserSurface::LOGO_DATA_URI}" alt=""> Kamandar</h1>
-        </div></header>
-        <main><section class="bucket warn" style="--c:var(--warn)">
-          <h2><span class="icon">\u{26A0}\u{FE0F}</span> <span class="htitle">Couldn't load your queue</span></h2>
-          <p class="empty">#{esc.call(message)}</p>
-          <p class="empty"><a href="/">Try again</a></p>
-        </section></main></body></html>
+        <title>Kamandar — error</title>#{FONT_LINKS}<style>#{extra_css}</style></head>
+        <body>
+        <header class="topbar"><div class="bar bar-main"><a class="brand" href="/"><span class="logo">K</span><span class="bname">Kamandar</span></a></div></header>
+        <div class="shell shell-error">
+          <section class="sec warn" style="--c:#cf222e">
+            <div class="sec-head"><span class="sec-ic">\u{26A0}\u{FE0F}</span><h2 class="sec-title">Couldn't load your queue</h2></div>
+            <div class="rows"><div class="emptybox"><p class="emptymsg">#{esc.call(message)}</p><p class="emptymsg"><a href="/">Try again</a></p></div></div>
+          </section>
+        </div>
+        </body></html>
       HTML
     end
 
@@ -1680,144 +1739,189 @@ module Kamandar
       pairs.empty? ? "/" : "/?#{pairs.join('&')}"
     end
 
-    # The premium chrome layered on top of BrowserSurface.css: a sticky glass
-    # top nav, the sidebar + tabbed panels, and a footer. Theme variables are
-    # inherited from BrowserSurface.css so it tracks light/dark automatically.
+    # The full self-contained design system for the live web app — ported from
+    # the Kamandar Claude Design mockup (Instrument Sans + JetBrains Mono, oklch
+    # palette, 3-column grid). Theme-aware via prefers-color-scheme. No external
+    # assets beyond the webfont links; every panel is fed by real bucket data.
     def extra_css
       <<~CSS
-        /* ---- premium theme tokens (ServerSurface only) ---- */
-        :root{--wrap:min(1200px,93vw);--accent2:#8250df;--elev:var(--card);
-          --shadow-sm:0 1px 2px rgba(27,31,36,.06),0 1px 3px rgba(27,31,36,.04);
-          --shadow-md:0 4px 14px -4px rgba(27,31,36,.12),0 2px 6px -2px rgba(27,31,36,.07);
-          --shadow-lg:0 20px 44px -14px rgba(27,31,36,.20),0 6px 16px -6px rgba(27,31,36,.12)}
-        @media (prefers-color-scheme:dark){:root{--accent2:#a371f7;--elev:#1b2231;
-          --shadow-sm:0 1px 2px rgba(1,4,9,.55);
-          --shadow-md:0 8px 22px -6px rgba(1,4,9,.6);
-          --shadow-lg:0 26px 52px -16px rgba(1,4,9,.8),0 6px 16px -6px rgba(1,4,9,.6)}}
-        body{font-family:"Google Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;display:flex;flex-direction:column;min-height:100vh;background:
-          radial-gradient(900px 320px at 15% -140px,color-mix(in srgb,var(--accent) 16%,transparent),transparent),
-          radial-gradient(800px 300px at 88% -120px,color-mix(in srgb,var(--accent2) 14%,transparent),transparent),
-          var(--bg);background-attachment:fixed}
-        ::selection{background:color-mix(in srgb,var(--accent) 30%,transparent)}
-        /* sticky app header — frosted glass; nav row + toolbar row */
-        .appbar{position:sticky;top:0;z-index:10;background:color-mix(in srgb,var(--bg) 72%,transparent);backdrop-filter:saturate(1.6) blur(14px);-webkit-backdrop-filter:saturate(1.6) blur(14px);border-bottom:1px solid color-mix(in srgb,var(--border) 80%,transparent)}
-        .nav-wrap{max-width:var(--wrap);margin:0 auto;padding:13px 20px;display:flex;flex-wrap:wrap;align-items:center;gap:10px 14px}
-        .brand{display:flex;align-items:center;gap:9px;text-decoration:none;font-weight:800;font-size:1.2rem;letter-spacing:-.015em;color:var(--fg)}
-        .brand .bow{height:1.55rem;vertical-align:middle;filter:drop-shadow(0 1px 3px color-mix(in srgb,var(--accent) 45%,transparent))}
-        .brandname{background:linear-gradient(92deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
-        .topbar .meta{margin:0 0 0 auto;gap:7px}
-        /* header chips — glassy pills */
-        .appbar .chip{background:color-mix(in srgb,var(--card) 62%,transparent);border:1px solid color-mix(in srgb,var(--border) 85%,transparent);color:var(--muted);font-weight:600;padding:4px 11px;backdrop-filter:blur(4px);box-shadow:var(--shadow-sm)}
-        .appbar .chip.total{background:color-mix(in srgb,var(--accent) 14%,transparent);border-color:color-mix(in srgb,var(--accent) 42%,transparent);color:var(--accent);font-weight:800}
-        .appbar .chip.live{background:color-mix(in srgb,var(--warn) 15%,transparent);border-color:color-mix(in srgb,var(--warn) 45%,transparent);color:var(--warn)}
-        .appbar .chip.live::before{content:"";display:inline-block;width:7px;height:7px;margin-right:6px;border-radius:50%;background:var(--warn);vertical-align:middle;box-shadow:0 0 0 0 color-mix(in srgb,var(--warn) 70%,transparent);animation:kpulse 1.8s ease-out infinite}
-        @keyframes kpulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--warn) 60%,transparent)}70%{box-shadow:0 0 0 6px transparent}100%{box-shadow:0 0 0 0 transparent}}
-        /* toolbar row (below the nav) */
-        .toolbar{border-top:1px solid color-mix(in srgb,var(--border) 70%,transparent)}
-        .controls{max-width:var(--wrap);margin:0 auto;padding:11px 20px;display:flex;flex-wrap:wrap;gap:8px;align-items:center}
-        .controls input,.controls button{font:inherit;font-size:.82rem;background:var(--elev);color:var(--fg);border:1px solid var(--border);border-radius:9px;padding:7px 11px;transition:border-color .12s,box-shadow .12s}
-        .controls input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 20%,transparent)}
-        .controls .field{min-width:160px}
-        .controls .pollbox{min-width:0;display:inline-flex;align-items:center;gap:7px;padding:5px 7px 5px 12px;cursor:text;transition:border-color .1s ease,box-shadow .12s}
-        .controls .pollbox:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 18%,transparent)}
-        .controls .pollbox .pollicon{font-size:.92rem;line-height:1;color:var(--accent)}
-        .controls .pollbox .polltext{font-size:.78rem;font-weight:600;color:var(--muted)}
-        .controls .pollbox input{font-variant-numeric:tabular-nums;font-weight:600;color:var(--fg);background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:3px 4px;width:48px;text-align:center;min-width:0}
-        .controls .pollbox input:focus{outline:none;border-color:var(--accent);box-shadow:none}
-        .controls .pollbox .pollunit{font-size:.78rem;color:var(--muted);padding-right:3px}
-        .controls button{cursor:pointer;font-weight:700;border:none;color:#fff;background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 92%,#fff),var(--accent));box-shadow:0 2px 8px -2px color-mix(in srgb,var(--accent) 60%,transparent);transition:transform .1s ease,box-shadow .12s,filter .12s}
-        .controls button:hover{transform:translateY(-1px);filter:brightness(1.05);box-shadow:0 5px 14px -3px color-mix(in srgb,var(--accent) 65%,transparent)}
-        .controls button:active{transform:translateY(0)}
-        .controls .refresh{text-decoration:none;font-size:1.05rem;line-height:1;color:var(--muted);border:1px solid var(--border);border-radius:9px;padding:7px 11px;transition:transform .3s ease,color .12s,border-color .12s;background:var(--elev)}
-        .controls .refresh:hover{color:var(--accent);border-color:var(--accent);transform:rotate(90deg)}
-        /* segmented scope control (radios styled as a pill group) */
-        .seg{display:inline-flex;background:var(--elev);border:1px solid var(--border);border-radius:10px;padding:3px;gap:2px;box-shadow:var(--shadow-sm)}
+        :root{
+          --bg:#f4f5f7;--surface:#fff;--ink:#14161a;--ink2:#2b3038;--muted:#6b7280;--muted2:#8b9099;
+          --line:#e6e8ec;--line2:#f0f1f4;
+          --accent:oklch(0.53 0.17 262);--accent-d:oklch(0.47 0.17 262);--accent2:oklch(0.5 0.19 285);
+          --accent-bg:oklch(0.97 0.02 262);--accent-bd:oklch(0.9 0.05 262);
+          --good:oklch(0.62 0.15 150);--good-bg:oklch(0.96 0.03 150);--good-bd:oklch(0.9 0.06 150);
+          --warn:oklch(0.58 0.16 45);--warn-bg:oklch(0.96 0.04 50);--warn-bd:oklch(0.9 0.06 50);
+          --mono:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+        }
+        @media (prefers-color-scheme:dark){:root{
+          --bg:#0e1116;--surface:#161b22;--ink:#e6edf3;--ink2:#c9d1d9;--muted:#8b949e;--muted2:#6e7681;
+          --line:#232a33;--line2:#1b212a;
+          --accent:oklch(0.72 0.14 262);--accent-d:oklch(0.66 0.15 262);--accent2:oklch(0.68 0.16 288);
+          --accent-bg:color-mix(in srgb,var(--accent) 16%,transparent);--accent-bd:color-mix(in srgb,var(--accent) 40%,transparent);
+        }}
+        *{box-sizing:border-box}
+        html,body{margin:0;padding:0}
+        body{font-family:"Instrument Sans","Helvetica Neue",Helvetica,-apple-system,BlinkMacSystemFont,Arial,sans-serif;-webkit-font-smoothing:antialiased;color:var(--ink);background:linear-gradient(180deg,var(--bg),color-mix(in srgb,var(--bg) 88%,#000 4%));min-height:100vh}
+        a{color:var(--accent);text-decoration:none}
+        a:hover{color:var(--accent-d)}
+        .mono{font-family:var(--mono)}
+        .grow{flex:1 1 auto}
+        ::selection{background:color-mix(in srgb,var(--accent) 26%,transparent)}
+
+        /* ---------- header ---------- */
+        .topbar{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--surface) 86%,transparent);backdrop-filter:saturate(1.4) blur(14px);-webkit-backdrop-filter:saturate(1.4) blur(14px);border-bottom:1px solid var(--line)}
+        .controls{max-width:1440px;margin:0 auto;padding:0 28px}
+        .bar{display:flex;align-items:center;gap:14px}
+        .bar-main{height:60px}
+        .bar-tools{flex-wrap:wrap;gap:8px;padding:10px 0 12px;border-top:1px solid var(--line2)}
+        .brand{display:flex;align-items:center;gap:10px;color:var(--ink)}
+        .brand:hover{color:var(--ink)}
+        .logo{width:26px;height:26px;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:700;letter-spacing:-.02em}
+        .bname{font-size:16px;font-weight:600;letter-spacing:-.02em}
+        .vpill{font-family:var(--mono);font-size:10px;color:var(--muted2);border:1px solid var(--line);border-radius:5px;padding:2px 5px}
+        .seg{display:inline-flex;align-items:center;gap:2px;background:var(--line2);border:1px solid var(--line);border-radius:9px;padding:3px}
         .segr{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
-        .seglabel{cursor:pointer;font-size:.82rem;font-weight:600;color:var(--muted);padding:5px 12px;border-radius:7px;text-transform:capitalize;transition:color .12s,background .12s}
-        .seglabel:hover{color:var(--fg)}
-        .segr:checked+.seglabel{background:linear-gradient(180deg,color-mix(in srgb,var(--accent) 92%,#fff),var(--accent));color:#fff;box-shadow:0 2px 6px -2px color-mix(in srgb,var(--accent) 60%,transparent)}
+        .seglabel{cursor:pointer;font-size:13px;font-weight:500;color:var(--muted);padding:5px 13px;border-radius:6px;transition:background .12s,color .12s}
+        .seglabel:hover{color:var(--ink);background:color-mix(in srgb,var(--line) 70%,transparent)}
+        .segr:checked+.seglabel{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(16,24,40,.1)}
         .segr:focus-visible+.seglabel{outline:2px solid var(--accent);outline-offset:2px}
-        /* reveal only the fields the chosen scope needs — pure CSS, no JS */
+        .livebadge{display:inline-flex;align-items:center;gap:7px;height:30px;padding:0 11px;border-radius:8px;background:var(--good-bg);border:1px solid var(--good-bd);font-size:12px;font-weight:600;color:oklch(0.44 0.11 150);white-space:nowrap}
+        .livedot{width:6px;height:6px;border-radius:50%;background:var(--good);animation:km-pulse 2.4s ease-in-out infinite}
+        @keyframes km-pulse{0%,100%{opacity:1}50%{opacity:.35}}
+        .userbox{display:inline-flex;align-items:center;gap:8px;height:30px;padding:0 4px 0 10px;border-radius:8px;border:1px solid var(--line);background:var(--surface)}
+        .ulogin{font-family:var(--mono);font-size:12px;color:var(--ink2)}
+        .uava{width:22px;height:22px;border-radius:6px;background:linear-gradient(135deg,#2b3038,#4b5058);color:#fff;font-size:10px;font-weight:600;display:flex;align-items:center;justify-content:center}
+        /* tools row */
+        .field{min-width:170px;font:inherit;font-size:13px;height:30px;padding:0 11px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink)}
+        .field:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 18%,transparent)}
         .controls .field{display:none}
         .controls:has(#m-org:checked) .f-name,
         .controls:has(#m-repo:checked) .f-name,
         .controls:has(#m-project:checked) .f-proj,
-        .controls:has(.segr:checked:not(#m-global)) .f-poll{display:inline-block}
-        .ghlink{display:inline-flex;align-items:center;gap:6px;color:var(--muted);text-decoration:none;border:1px solid var(--border);border-radius:9px;padding:7px 10px;background:var(--elev);transition:color .12s,border-color .12s,transform .1s}
-        .ghlink:hover{color:var(--fg);border-color:var(--accent);transform:translateY(-1px)}
-        .ghmark{display:block}
-        /* layout: sidebar + main content */
-        .app{flex:1 0 auto;display:flex;gap:26px;width:100%;max-width:var(--wrap);margin:0 auto;padding:28px 20px 56px;align-items:flex-start}
-        .tabr{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
-        .sidebar{position:sticky;top:122px;flex:none;width:256px;display:flex;flex-direction:column;gap:14px}
-        .sidebox{background:var(--elev);border:1px solid var(--border);border-radius:16px;padding:13px;box-shadow:var(--shadow-md)}
-        .side-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:3px 5px 11px;border-bottom:1px solid var(--border)}
-        .side-title{font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
-        .side-head .chip.total{background:color-mix(in srgb,var(--accent) 13%,transparent);border-color:color-mix(in srgb,var(--accent) 40%,transparent);color:var(--accent);font-weight:800}
-        .chip.total.z{background:transparent;border-color:var(--border);color:var(--muted)}
-        .sidebar nav{display:flex;flex-direction:column;gap:3px;margin-top:9px}
-        .navitem{position:relative;display:flex;align-items:center;gap:10px;padding:8px 11px;border:1px solid transparent;border-radius:11px;cursor:pointer;color:var(--fg);transition:background .12s,transform .1s}
-        .navitem:hover{background:color-mix(in srgb,var(--c) 12%,transparent)}
-        .navitem:hover:not([for="kt-0"]){transform:translateX(2px)}
-        .navitem .icon{width:27px;height:27px;display:inline-flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--c) 16%,transparent);border-radius:8px;font-size:.95rem;flex:none}
-        .navtitle{flex:1 1 auto;min-width:0;font-weight:600;font-size:.9rem;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-        .navitem .count{box-shadow:none}
-        .navitem .count.z{background:var(--border);color:var(--muted)}
-        .side-foot{margin-top:11px;padding:10px 4px 2px;border-top:1px solid var(--border);font-size:.72rem;font-weight:600;letter-spacing:.03em;color:var(--muted);text-align:center;text-transform:uppercase}
-        /* main content sits on one elevated surface so it never floats in a void */
-        .panels{flex:1 1 auto;min-width:0;margin:0;max-width:none;background:var(--elev);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow-md);padding:24px 24px 28px;min-height:64vh}
-        .panels .bucket{display:none;margin:0}
-        .panels h2{font-size:1.2rem;border-bottom:none;padding:0;margin:0 0 3px;letter-spacing:-.01em}
-        .panels h2 .icon{width:34px;height:34px;display:inline-flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--c) 15%,transparent);border-radius:10px;font-size:1.15rem}
-        .panels h2 .count{background:var(--c);box-shadow:0 2px 8px -3px var(--c)}
-        .panels .desc{margin:8px 2px 20px;color:var(--muted);font-size:.88rem;line-height:1.5;max-width:64ch;padding-bottom:16px;border-bottom:1px solid color-mix(in srgb,var(--border) 65%,transparent)}
-        /* premium cards (scoped so the offline BrowserSurface page is untouched) */
-        .app .card{background:var(--card);border:1px solid var(--border);border-left:3px solid var(--c);border-radius:13px;padding:14px 16px;margin:10px 0;box-shadow:var(--shadow-sm);transition:transform .13s cubic-bezier(.2,.7,.2,1),box-shadow .13s,border-color .13s}
-        .app .card:first-of-type{margin-top:2px}
-        .app .card:hover{transform:translateY(-2px);border-color:color-mix(in srgb,var(--c) 45%,var(--border));box-shadow:var(--shadow-md),0 10px 26px -12px color-mix(in srgb,var(--c) 60%,transparent)}
-        .app .num{color:var(--muted);font:600 .82rem/1 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-variant-numeric:tabular-nums}
-        .app .title{font-weight:600;font-size:.95rem;letter-spacing:-.005em}
-        .app .repo{background:color-mix(in srgb,var(--fg) 5%,transparent);border:1px solid var(--border);border-radius:7px;font-size:.75rem;font-weight:500;color:var(--muted);padding:2px 9px}
-        .app .badge{background:linear-gradient(180deg,color-mix(in srgb,var(--warn) 88%,#fff),var(--warn));color:#fff;box-shadow:0 1px 3px -1px color-mix(in srgb,var(--warn) 70%,transparent)}
-        .bucket.warn .card{background:var(--warnbg)}
-        /* pagination — radios drive which .page shows (see pager_css) */
-        .pgr{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
-        .bucket.paged .pages>.page{display:none}
-        .pager{display:flex;flex-wrap:wrap;gap:6px;margin-top:20px;padding-top:16px;border-top:1px solid color-mix(in srgb,var(--border) 65%,transparent)}
-        .pager label{cursor:pointer;min-width:34px;text-align:center;padding:6px 10px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--muted);font-weight:600;font-size:.82rem;font-variant-numeric:tabular-nums;transition:color .12s,border-color .12s,transform .1s}
-        .pager label:hover{color:var(--accent);border-color:var(--accent);transform:translateY(-1px)}
-        /* centered empty-state card */
-        .emptybox{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;min-height:44vh;border:1px dashed color-mix(in srgb,var(--border) 90%,transparent);border-radius:16px;background:
-          radial-gradient(420px 180px at 50% 0,color-mix(in srgb,var(--c) 8%,transparent),transparent),var(--bg);padding:44px 24px;text-align:center}
-        .emptyicon{font-size:2.8rem;line-height:1;opacity:.9;filter:drop-shadow(0 4px 12px color-mix(in srgb,var(--c) 40%,transparent))}
-        .emptymsg{margin:0;color:var(--muted);font-size:1.02rem;font-weight:600;max-width:42ch}
-        .navitem:focus-within{outline:2px solid var(--accent);outline-offset:2px}
-        /* footer */
-        .foot{flex-shrink:0;border-top:1px solid var(--border);background:color-mix(in srgb,var(--card) 88%,transparent)}
-        .foot-wrap{max-width:var(--wrap);margin:0 auto;padding:20px 20px 30px;display:flex;flex-wrap:wrap;align-items:center;gap:6px 12px;color:var(--muted);font-size:.78rem}
-        .foot .fbrand{display:flex;align-items:center;gap:6px;font-weight:700;color:var(--fg)}
-        .foot .fbrand .bow{height:1.15rem;vertical-align:middle}
-        .foot .dot{opacity:.45}
-        .foot .grow{flex:1 1 auto}
-        .foot .ghlink{border:none;padding:0;background:none;font-weight:600}
-        .foot .ghlink:hover{transform:none}
-        @media (max-width:820px){
-          /* use the full screen width — the desktop column wastes phone space */
-          .nav-wrap,.controls,.app,.foot-wrap{max-width:100%}
-          .app{flex-direction:column;gap:12px;padding:18px 14px 40px}
-          .panels{padding:18px 16px 22px;border-radius:14px}
-          /* flatten the sidebar cards into clean wrapping pill strips */
-          .sidebar{position:static;width:auto;gap:10px}
-          .sidebox{background:none;border:none;box-shadow:none;padding:0}
-          .side-head{padding:0 2px 6px;border-bottom:none}
-          .side-foot{display:none}
-          .sidebar nav{flex-direction:row;flex-wrap:wrap;gap:7px;margin-top:7px}
-          .navitem{flex:0 0 auto;border:1px solid var(--border);background:var(--card);padding:6px 11px;border-radius:999px;gap:7px;box-shadow:var(--shadow-sm)}
-          .navitem:hover{transform:none}
-          .navtitle{flex:0 0 auto;font-size:.84rem}
-          .navitem .icon{width:20px;height:20px;font-size:.9rem;background:none}
-          .topbar .controls{margin:0;width:100%}
+        .controls:has(.segr:checked:not(#m-global)) .f-poll{display:inline-flex}
+        .pollbox{align-items:center;gap:7px;min-width:0;padding:0 7px 0 11px;cursor:text}
+        .pollbox:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 16%,transparent)}
+        .pollicon{color:var(--accent);font-size:14px;line-height:1}
+        .polltext{font-size:12px;font-weight:600;color:var(--muted)}
+        .pollbox input{width:46px;height:22px;text-align:center;font-family:var(--mono);font-size:12px;border:1px solid var(--line);border-radius:6px;background:var(--bg);color:var(--ink);min-width:0;padding:0}
+        .pollbox input:focus{outline:none;border-color:var(--accent)}
+        .pollunit{font-size:12px;color:var(--muted2)}
+        .btn-apply{border:none;background:var(--accent);color:#fff;font:600 12px "Instrument Sans",sans-serif;height:30px;padding:0 15px;border-radius:8px;cursor:pointer;box-shadow:0 1px 2px rgba(16,24,40,.14);transition:background .12s}
+        .btn-apply:hover{background:var(--accent-d)}
+        .btn-refresh{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);background:var(--surface);color:var(--ink2);font:500 12px "Instrument Sans",sans-serif;height:30px;padding:0 12px;border-radius:8px;transition:background .12s}
+        .btn-refresh:hover{background:var(--line2);color:var(--ink)}
+        .daymeta{font-family:var(--mono);font-size:11px;color:var(--muted2)}
+        .totalmeta{font-size:11px;font-weight:600;color:var(--accent);background:var(--accent-bg);border:1px solid var(--accent-bd);border-radius:20px;padding:2px 9px}
+
+        /* ---------- layout ---------- */
+        .shell{max-width:1440px;margin:0 auto;padding:22px 28px 48px;display:grid;grid-template-columns:248px minmax(0,1fr) 300px;gap:20px;align-items:start}
+        .rail{display:flex;flex-direction:column;gap:14px;position:sticky;top:112px}
+        .main{display:flex;flex-direction:column;gap:18px;min-width:0}
+
+        /* ---------- cards / rails ---------- */
+        .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+        .card-head{display:flex;align-items:center;justify-content:space-between;padding:13px 14px 11px}
+        .eyebrow{font-size:10.5px;font-weight:700;letter-spacing:.09em;color:var(--muted2);text-transform:uppercase}
+        .openpill{font-size:11px;font-weight:600;color:var(--accent);background:var(--accent-bg);border:1px solid var(--accent-bd);border-radius:20px;padding:1px 8px}
+        .openpill.z{color:var(--muted2);background:var(--line2);border-color:var(--line)}
+        .card-title{font-size:13.5px;font-weight:600;letter-spacing:-.01em;padding:15px 15px 12px}
+        .lane-list{display:flex;flex-direction:column;padding:0 8px 10px}
+        .lane{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:9px;color:var(--ink2);transition:background .12s}
+        .lane:hover{background:var(--line2);color:var(--ink2)}
+        .ldot{width:6px;height:6px;border-radius:50%;background:var(--c);flex:none}
+        .lane.empty .ldot{background:#c8ccd2}
+        .lname{font-size:13.5px;font-weight:500;flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .lcount{font-size:11px;font-weight:700;color:#fff;background:var(--c);border-radius:20px;padding:1px 8px;min-width:20px;text-align:center}
+        .lane.empty .lcount{color:var(--muted2);background:var(--line2);font-weight:600}
+        .card-foot{border-top:1px solid var(--line2);padding:10px 14px;display:flex;align-items:center;justify-content:space-between}
+
+        /* ---------- KPI row ---------- */
+        .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+        .kpi{background:var(--surface);border:1px solid var(--line);border-top:2px solid var(--c);border-radius:13px;padding:13px 14px;box-shadow:0 1px 2px rgba(16,24,40,.04);display:flex;flex-direction:column;gap:6px}
+        .kpi-l{font-size:11px;font-weight:600;letter-spacing:.04em;color:var(--muted2);text-transform:uppercase}
+        .kpi-v{font-size:26px;font-weight:600;letter-spacing:-.03em;color:var(--ink);font-family:var(--mono);line-height:1}
+        .kpi-s{font-size:11.5px;color:var(--muted2)}
+
+        /* ---------- sections ---------- */
+        .sec{background:var(--surface);border:1px solid var(--line);border-radius:16px;box-shadow:0 1px 3px rgba(16,24,40,.05);overflow:hidden;scroll-margin-top:118px}
+        .sec-head{padding:16px 18px 14px;border-bottom:1px solid var(--line2);display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+        .sec-ic{width:30px;height:30px;display:inline-flex;align-items:center;justify-content:center;background:color-mix(in srgb,var(--c) 15%,transparent);border-radius:9px;font-size:15px}
+        .sec-title{margin:0;font-size:16px;font-weight:600;letter-spacing:-.02em}
+        .sec-count{font-size:11px;font-weight:700;color:#fff;background:var(--c);border-radius:20px;padding:2px 8px;min-width:22px;text-align:center}
+        .sec-count.z{color:var(--muted2);background:var(--line2)}
+        .sec-desc{flex-basis:100%;margin:2px 0 0;font-size:13px;color:var(--muted)}
+        .rows{display:flex;flex-direction:column}
+        .qrow{position:relative;display:flex;align-items:center;gap:14px;padding:13px 18px 13px 24px;border-bottom:1px solid var(--line2);color:inherit;transition:background .12s}
+        .qrow:last-child{border-bottom:none}
+        .qrow:hover{background:color-mix(in srgb,var(--c) 5%,var(--surface));color:inherit}
+        .q-rail{position:absolute;left:0;top:10px;bottom:10px;width:3px;border-radius:0 3px 3px 0;background:var(--c)}
+        .q-body{display:flex;flex-direction:column;gap:5px;min-width:0;flex:1}
+        .q-meta{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11.5px}
+        .q-repo{color:var(--muted2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:280px}
+        .q-sep{color:#d2d6dc}
+        .q-num{font-weight:600;color:var(--accent)}
+        .q-title{font-size:14.5px;font-weight:600;letter-spacing:-.01em;color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .qrow:hover .q-title{color:var(--accent)}
+        .q-sub{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+        .m-updated{font-size:12px;color:var(--muted2)}
+        .waitchip{font-size:11px;font-weight:600;color:oklch(0.46 0.14 45);background:var(--warn-bg);border:1px solid var(--warn-bd);border-radius:20px;padding:1px 8px}
+        .q-open{flex:none;font-size:12px;font-weight:600;color:var(--muted2);border:1px solid var(--line);border-radius:8px;padding:6px 11px;transition:color .12s,border-color .12s,background .12s}
+        .qrow:hover .q-open{color:var(--accent);border-color:var(--accent-bd);background:var(--accent-bg)}
+
+        /* ---------- right rail widgets ---------- */
+        .glance-list{display:flex;flex-direction:column;gap:9px;padding:0 15px 15px}
+        .glance{display:flex;align-items:center;gap:10px;color:inherit}
+        .glance:hover{color:inherit}
+        .g-name{font-size:12px;color:var(--ink2);width:98px;flex:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .glance:hover .g-name{color:var(--accent)}
+        .g-track{flex:1;height:6px;border-radius:3px;background:var(--line2);overflow:hidden}
+        .g-fill{display:block;height:100%;border-radius:3px;background:var(--c);min-width:2px}
+        .g-n{font-family:var(--mono);font-size:11.5px;font-weight:600;color:var(--muted);width:22px;text-align:right;flex:none}
+        .ow-list{display:flex;flex-direction:column;padding:0 15px 12px}
+        .ow{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line2);color:inherit}
+        .ow:last-child{border-bottom:none}
+        .ow:hover{color:inherit}
+        .ow-title{font-size:12.5px;color:var(--ink2);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        .ow:hover .ow-title{color:var(--accent)}
+        .ow-age{flex:none;color:var(--muted2);font-size:11px}
+        .focus{background:linear-gradient(150deg,#1d2026,#2b3038);border:none;padding:15px;color:#fff;box-shadow:0 4px 14px rgba(16,24,40,.16)}
+        .focus.clear{background:linear-gradient(150deg,oklch(0.48 0.12 162),oklch(0.42 0.11 178))}
+        .f-title{font-size:13px;font-weight:600;margin-bottom:6px}
+        .f-body{margin:0 0 12px;font-size:12.5px;line-height:1.45;color:rgba(255,255,255,.66)}
+        .f-btn{display:block;text-align:center;width:100%;background:#fff;color:#14161a;font:600 12.5px "Instrument Sans",sans-serif;height:32px;line-height:32px;border-radius:8px}
+        .f-btn:hover{background:#e8eaee;color:#14161a}
+
+        /* ---------- empty state ---------- */
+        .emptybox{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:44px 24px;text-align:center}
+        .emptyicon{font-size:2.4rem;line-height:1;opacity:.85}
+        .emptymsg{margin:0;color:var(--muted);font-size:14px;font-weight:500}
+
+        /* ---------- footer ---------- */
+        .foot{border-top:1px solid var(--line);background:color-mix(in srgb,var(--surface) 70%,transparent)}
+        .foot-in{max-width:1440px;margin:0 auto;padding:16px 28px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted2)}
+        .f-brand{font-weight:600;color:var(--ink2)}
+        .f-sep{color:#d2d6dc}
+        .f-gh{font-weight:500}
+        .shell-error{min-height:46vh}
+
+        /* ---------- responsive ---------- */
+        @media (max-width:1180px){
+          .shell{grid-template-columns:220px minmax(0,1fr)}
+          .rail-right{display:none}
+          .kpis{grid-template-columns:repeat(2,1fr)}
         }
+        @media (max-width:860px){
+          .controls,.shell,.foot-in{padding-left:16px;padding-right:16px}
+          .shell{grid-template-columns:1fr;padding-top:16px}
+          .rail{position:static}
+          .rail-left{order:2}
+          .bar-main{flex-wrap:wrap;height:auto;padding:12px 0}
+          .bar-main .seg{order:3}
+          .kpis{grid-template-columns:repeat(2,1fr)}
+          .q-open{display:none}
+        }
+        @media (max-width:520px){.kpis{grid-template-columns:1fr}}
       CSS
     end
   end

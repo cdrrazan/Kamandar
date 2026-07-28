@@ -766,6 +766,7 @@ SECRET = "ghp_supersecrettoken"
 page = SURF.page(buckets, config: config.merge(token: SECRET),
                           generated_at: TODAY, mode: "org", name: "Acme", poll: 60)
 ok "server page is HTML", page.start_with?("<!DOCTYPE html>")
+ok "server page leaks no token", !page.include?(SECRET)
 ok "server page reuses bucket content", page.include?("#101") && page.include?("Review me")
 ok "server page has a scope control", page.include?(%(role="radiogroup")) &&
                                       page.include?(%(<input class="segr" type="radio" name="mode" id="m-org" value="org" checked>))
@@ -773,31 +774,62 @@ ok "server page has a scope control", page.include?(%(role="radiogroup")) &&
 ok "controls hide scope fields by default", page.include?(".controls .field{display:none}")
 ok "controls reveal name for org/repo", page.include?(".controls:has(#m-org:checked) .f-name")
 ok "controls reveal project url for project", page.include?(".controls:has(#m-project:checked) .f-proj")
-# the toolbar (controls row) lives below the nav, inside the sticky header.
-ok "controls live in a toolbar below the nav",
-   page.index(%(<nav class="topbar">)) < page.index(%(<div class="toolbar">))
-ok "server page has a refresh control", page.include?("↻")
+# the tools row lives below the brand row, both inside the sticky header form.
+ok "tools row lives below the brand row",
+   page.index(%(<div class="bar bar-main">)) < page.index(%(<div class="bar bar-tools">))
+ok "server page has a refresh control", page.include?(%(class="btn-refresh")) && page.include?("↻")
 ok "server page reflects poll interval", page.include?(%(http-equiv="refresh" content="60"))
-ok "server page loads the Google Sans webfont",
-   page.include?("fonts.googleapis.com/css2?family=Google+Sans") &&
+ok "server page loads the Instrument Sans + JetBrains Mono webfonts",
+   page.include?("family=Instrument+Sans") && page.include?("JetBrains+Mono") &&
    page.include?(%(<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>))
-ok "server page applies Google Sans in CSS", page.include?(%(font-family:"Google Sans"))
-# sidebar + CSS-only tabs (no JS): a hidden radio per bucket, a sidebar nav,
-# and per-index rules that reveal the matching panel.
-ok "server page has a sidebar nav", page.include?(%(<aside class="sidebar">)) &&
-                                    page.include?(%(<label class="navitem"))
-ok "server page builds radio tabs", page.include?(%(<input class="tabr" type="radio" name="kt" id="kt-0" checked>)) &&
-                                    page.include?(%(id="kt-1"))
-ok "server page panels are id'd", page.include?(%(<main class="panels">)) &&
-                                  page.include?(%(id="kp-0"))
-ok "server page generates tab rules", page.include?("#kt-0:checked~.panels #kp-0{display:block}")
-ok "selected tab fills with the bucket color", page.include?('.navitem[for="kt-0"]{background:var(--c)')
-ok "selected tab flips text to white", page.include?('.navitem[for="kt-0"] .navtitle{color:#fff}')
+ok "server page applies Instrument Sans in CSS", page.include?(%(font-family:"Instrument Sans"))
+# poll>0 shows a live badge; header carries the user + monogram avatar.
+ok "server page shows a live badge when polling", page.include?(%(<span class="livebadge">)) &&
+                                                  page.include?("Live · every 60s")
+ok "header shows the user + avatar monogram", page.include?(%(<span class="ulogin">@me</span>)) &&
+                                              page.include?(%(<span class="uava">ME</span>))
 ok "server page stays script-free", !(page =~ /<script/)
-# tab_css emits one show + one highlight rule per bucket, scaled to the count.
-ok "tab_css scales to bucket count", SURF.tab_css(3).scan("display:block").size == 3
 
-# --- Demo data + pagination -------------------------------------------------
+# left rail: two carded groups of anchor-linked lanes (no JS tabs).
+ok "server page has a left rail", page.include?(%(<aside class="rail rail-left">))
+ok "left rail groups Others' work + Your work",
+   page.include?(%(<span class="eyebrow">Others' work</span>)) &&
+   page.include?(%(<span class="eyebrow">Your work</span>))
+ok "lanes anchor-link to their section", page.include?(%(<a class="lane) ) &&
+                                         page.include?(%(href="#sec-reviews_owed"))
+ok "lane uses the short label", page.include?(%(<span class="lname">Reviews</span>))
+ok "your-work footer shows scope + repo count",
+   page.include?(%(scope: )) && page.include?(%(class="card-foot"))
+
+# KPI row — every stat computed from real buckets.
+ok "server page has a KPI row", page.include?(%(<div class="kpis">)) &&
+                                page.include?(%(<span class="kpi-l">Awaiting your review</span>))
+
+# sections: one anchored <section> per bucket, full title + description + rows.
+ok "sections are anchored per bucket", page.include?(%(id="sec-reviews_owed"))
+ok "section keeps the full title", page.include?(%(<h2 class="sec-title">Reviews you owe</h2>))
+ok "section shows a description", page.include?(%(<p class="sec-desc">)) &&
+   page.include?("review was requested from you")
+ok "queue row carries repo, number, title, and an open affordance",
+   page.include?(%(<span class="q-num">#101</span>)) &&
+   page.include?(%(<span class="q-title">Review me</span>)) &&
+   page.include?(%(<span class="q-open">Open ↗</span>))
+
+# right rail: queue-at-a-glance + focus block (both from real counts).
+ok "right rail shows queue at a glance", page.include?(%(<aside class="rail rail-right">)) &&
+                                         page.include?("Queue at a glance")
+ok "right rail focus block links the first review",
+   page.include?(%(class="card focus")) && page.include?("Start reviewing")
+
+# empty buckets render a centered empty-state.
+ok "empty bucket shows an empty-state", page.include?(%(<div class="emptybox">)) &&
+   page.include?(%(<p class="emptymsg">))
+ok "server page has a footer", page.include?(%(<footer class="foot">)) &&
+                               page.include?("Kamandar v#{Kamandar::VERSION}")
+ok "footer shows the generated time", page.include?("generated ")
+ok "footer links the GitHub repo", page.include?(%(class="f-gh" href="#{Kamandar::ServerSurface::REPO_URL}" target="_blank" rel="noopener"))
+
+# --- Demo data --------------------------------------------------------------
 DEMO = Kamandar::Demo
 %w[project global].each do |dmode|
   db = DEMO.buckets(dmode)
@@ -812,39 +844,12 @@ ok "demo stale rows carry a waiting badge",
 ok "demo is deterministic", DEMO.buckets("global") == DEMO.buckets("global")
 ok "demo URLs point at github.com", DEMO.buckets("project")[:reviews_owed].all? { |r| r[:url].start_with?("https://github.com/") }
 
-# pagination: a >PAGE_SIZE bucket splits into pages with a numbered pager.
+# demo renders every bucket as a section with all its rows (no pagination).
 demo_page = SURF.page(DEMO.buckets("project"), config: config, generated_at: TODAY, mode: "project")
-ok "pagination splits long buckets into pages", demo_page.scan(%(<div class="page">)).size > 8
-ok "pagination renders a numbered pager", demo_page.include?(%(<nav class="pager">))
-ok "paginated buckets get the .paged class", demo_page =~ /class="bucket[^"]*\bpaged\b/
-ok "pager_css shows the chosen page", demo_page.include?("#pg-0-0:checked~.pages>.page:nth-child(1){display:block}")
-# a short bucket (<= PAGE_SIZE) gets no pager.
-short = SURF.page({ reviews_owed: [{ number: "1", title: "x", repo: "a/b", url: "http://x" }] },
-                  config: config, generated_at: TODAY, mode: "global")
-ok "short buckets are not paginated", !short.include?(%(<nav class="pager">))
-# premium chrome: top nav, sidebar header, and footer.
-ok "server page has a top nav", page.include?(%(<nav class="topbar">)) &&
-                                page.include?(%(<span class="brandname">Kamandar</span>))
-# sidebar splits into two boxes: reviews (others' work) and your own work.
-ok "sidebar has an Others' work box", page.include?(%(<span class="side-title">Others&#39; work</span>))
-ok "sidebar has a Your work box", page.include?(%(<span class="side-title">Your work</span>))
-ok "sidebar uses two carded boxes", page.scan(%(<section class="sidebox">)).size == 2
-# sidebar tabs use short labels; the full title stays on the panel + tooltip.
-ok "sidebar tab uses a short label", page.include?(%(<span class="navtitle">Reviews</span>))
-ok "navitem keeps full title as tooltip", page.include?(%(title="Reviews you owe"))
-ok "panel heading keeps full title", page.include?(%(<span class="htitle">Reviews you owe</span>))
-# each panel explains what its bucket collects.
-ok "panel shows a description", page.include?(%(<p class="desc">)) &&
-   page.include?("review was requested from you")
-# empty buckets render a centered empty-state card.
-ok "empty bucket shows an empty-state card", page.include?(%(<div class="emptybox">)) &&
-   page.include?(%(<p class="emptymsg">))
-ok "server page has a footer", page.include?(%(<footer class="foot">)) &&
-                               page.include?("Kamandar v#{Kamandar::VERSION}")
-ok "footer shows the generated time", page.include?("generated ")
-# GitHub repo link appears in both the nav and the footer.
-ok "page links to the GitHub repo", page.scan(%(href="#{Kamandar::ServerSurface::REPO_URL}")).size >= 2
-ok "GitHub link opens in a new tab safely", page.include?(%(class="ghlink" href="#{Kamandar::ServerSurface::REPO_URL}" target="_blank" rel="noopener"))
+ok "demo renders one section per bucket",
+   demo_page.scan(%(<section class="sec)).size == E.bucket_meta("project").size
+ok "demo renders every row (no page cap)",
+   demo_page.scan(%(<a class="qrow")).size == DEMO.buckets("project").values.sum(&:size)
 
 # error_page: same chrome, no token, still renders a retry link.
 errp = SURF.error_page("boom", config: config.merge(token: SECRET))

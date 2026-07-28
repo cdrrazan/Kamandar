@@ -26,7 +26,7 @@ the opt-in `--serve`, bound to localhost.
 
 ![Kamandar live web app (--serve)](dashboard.png)
 
-<sub>The live web app (`ruby lib/kamandar.rb --serve`). Pure HTML + CSS — sidebar tabs, two work boxes, and pagination, no JavaScript. Screenshot rendered with `--demo`.</sub>
+<sub>The live web app (`ruby lib/kamandar.rb --serve`). Pure HTML + CSS 3-column dashboard — left-rail lanes, KPI row, per-bucket sections, right-rail widgets, no JavaScript. Screenshot rendered with `--demo`.</sub>
 
 </div>
 
@@ -395,21 +395,25 @@ ruby lib/kamandar.rb --serve --demo     # fabricated data, no token (the screens
 The page is a small "command center" UI, and it's **pure HTML + CSS — no
 JavaScript**:
 
-- **Sticky app header** — a frosted top nav (the **bow-and-arrow logo** +
-  wordmark, status chips, GitHub repo link) over a **toolbar row** with the
-  scope control. The scope picker is a
-  segmented control; the page shows just what each scope needs — `global` is
-  only the picker + **Apply** + **refresh**, while `org`/`repo` reveal the name
+- **Sticky glass header** — a **logo tile** + wordmark + version pill, the
+  scope **segmented control**, a live/synced badge, and your handle + avatar,
+  over a **tools row** with the scope fields, **Apply**, **Refresh**, the clock
+  and open count. The page shows just what each scope needs — `global` is only
+  the picker + **Apply** + **Refresh**, while `org`/`repo` reveal the name
   field, `project` reveals the board URL, and any non-global scope reveals the
   **auto-refresh** interval. The reveal is driven by CSS `:has()`, no scripting.
-- **Sidebar + tabs** — buckets become tabs in two cards: **Others' work**
-  (reviews requested from you) and **Your work** (your assigned issues/PRs).
-  Each card shows its own open count; the selected tab fills with the bucket's
-  color. Tab switching is pure-CSS (a hidden radio per bucket).
-- **Main panel** — the selected bucket, with a one-line description of what it
-  collects under the heading, the matching cards, or a centered empty-state
-  card when nothing's waiting. Buckets with more than 8 cards **paginate**, with
-  a numbered pager (also pure CSS — a hidden radio per page).
+- **Left rail** — two carded groups of bucket **lanes** (**Others' work** =
+  reviews you owe, **Your work** = your assigned issues/PRs), each a colored dot
+  + label + count that **anchor-links** to its section; a footer shows the scope
+  and distinct-repo count.
+- **KPI row** — four stat cards (awaiting review, your open work, gone quiet,
+  in queue), **every number computed from the real buckets** — no fabricated
+  CI/velocity metrics.
+- **Main column** — one anchored `<section>` per bucket: icon, full title,
+  count, a one-line description, then the rows (`repo · #number · title`, last
+  activity, and a "quiet N days" chip on stale PRs), or a centered empty-state.
+- **Right rail** — a **queue-at-a-glance** bar breakdown, an **oldest-waiting**
+  shortlist, and a **focus** card that links your first owed review.
 - **Footer** — version, the localhost/stdlib note, repo link, and the
   generated-at time.
 - **Branding** — the logo is **inlined as a data URI** (so it ships inside the
