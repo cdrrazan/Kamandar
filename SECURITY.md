@@ -46,6 +46,24 @@ Anyone with access to your loopback interface (i.e. a local account on your
 machine) can read the served page while the server runs. Stop it (`Ctrl-C`)
 when you're done, and don't port-forward or proxy it to a public address.
 
+### `KAMANDAR_HOST` — the one way to leave loopback
+
+`KAMANDAR_HOST` overrides the bind address, and the shipped `Dockerfile` sets it
+to `0.0.0.0` so a reverse proxy can reach the server inside a container. Treat
+that as an explicit opt-out of the loopback guarantee:
+
+- **The app has no authentication of its own.** Whatever sits in front of it
+  (Cloudflare Access, an authenticating reverse proxy, a private network) is the
+  only thing standing between your GitHub queue and whoever finds the address.
+- In Docker, publish the port to loopback (`-p 127.0.0.1:4567:4567`) or to a
+  private interface — never to a public one without auth in front.
+- Outside a container there is essentially no good reason to set it. If you want
+  remote access, use a Cloudflare Tunnel with Access instead: the bind stays
+  `127.0.0.1` and `cloudflared` dials outbound.
+
+The token itself never leaves the process regardless of the bind — but the
+**data** on the page (private repo names, PR and issue titles) is sensitive.
+
 The generated HTML is written to a predictable path
 (`<tmpdir>/kamandar.html`) so watch-mode reloads hit the same browser tab.
 It contains only the same PR/issue titles and URLs you can already see on
@@ -74,7 +92,7 @@ If you find a security issue:
 
 1. **Do not** open a public issue for anything that could expose user
    credentials or data.
-2. Email the maintainer privately at **cdrrazan@gmail.com** with a description,
+2. Email the maintainer privately at **irajanbhattarai@gmail.com** with a description,
    reproduction steps, and impact.
 3. Please allow a reasonable window to respond before any public disclosure.
 
