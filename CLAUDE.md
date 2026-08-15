@@ -67,4 +67,4 @@ Don't key staleness off `reviewDecision` — it stays `CHANGES_REQUESTED` after 
 
 ## Docs
 
-`V2.md` is a design-only roadmap (multi-provider: GitLab/Jira/Linear) — not implemented. `SECURITY.md` covers the token-never-in-HTML guarantee.
+`V2.md` is a design-only roadmap (multi-provider: GitLab/Jira/Linear) — not implemented. `SECURITY.md` covers the token-never-in-HTML guarantee **and** the `KAMANDAR_HOST` opt-out (the `Dockerfile` sets `0.0.0.0` so a reverse proxy can reach `--serve` in a container; the app has no auth of its own). `FUNDING.md` + `.github/FUNDING.yml` cover sponsorship; maintainer contact is `irajanbhattarai@gmail.com` (also the security-report address). Test count is currently **313** — the README badge, the layout tree comment, and the Tests section all quote it, so update all three when the suite grows.

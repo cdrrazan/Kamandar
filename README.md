@@ -15,11 +15,13 @@ the opt-in `--serve`, bound to localhost.
 
 <br>
 
+![Version](https://img.shields.io/badge/version-1.0.0-0969da)
 ![Ruby](https://img.shields.io/badge/Ruby-3.2%2B-CC342D?logo=ruby&logoColor=white)
 ![Dependencies](https://img.shields.io/badge/dependencies-stdlib%20only-2ea44f)
-![Tests](https://img.shields.io/badge/tests-281%20passing-2ea44f)
+![Tests](https://img.shields.io/badge/tests-313%20passing-2ea44f)
 ![Serverless](https://img.shields.io/badge/serverless-no%20server%20·%20no%20DB%20·%20no%20OAuth-0969da)
 ![License](https://img.shields.io/badge/license-MIT-blue)
+![Sponsor](https://img.shields.io/badge/sponsor-%E2%9D%A4-db61a2)
 ![PRs welcome](https://img.shields.io/badge/PRs-welcome-ff69b4)
 
 <br>
@@ -115,6 +117,10 @@ kamandar --serve --no-open       # serve headless (don't auto-open a browser tab
 
 kamandar --email                 # send the daily-summary email now (needs SMTP config)
 kamandar --email --demo          # print the digest to the terminal (no SMTP send)
+
+kamandar --statuses              # list your board issues + their exact Status names
+kamandar --scope repo:acme/api   # narrow every PR bucket to one repo
+kamandar --ignore-older-than 30  # hide anything untouched for 30+ days
 ```
 
 ### Run it persistently (macOS)
@@ -140,6 +146,41 @@ The Ruby server still binds `127.0.0.1` only; the `--tunnel` child runs
 in front of that hostname** — the page is your live GitHub queue, backed by a
 PAT. Don't want it public? Drop `--tunnel` from the plist's `ProgramArguments`
 and re-run the installer for a localhost-only daemon.
+
+### 🐳 Docker
+
+For running the web app on a box that isn't your Mac — a homelab node, a VPS,
+anything already sitting behind a reverse proxy. The image is `ruby:3.4-slim`
+plus this repo; there's nothing to install, because there are no gems.
+
+```sh
+docker build -t kamandar .
+docker run --rm -p 4567:4567 \
+  -e GITHUB_TOKEN=ghp_xxx -e GH_LOGIN=your-username \
+  kamandar
+# → http://127.0.0.1:4567
+```
+
+The container sets `KAMANDAR_HOST=0.0.0.0` so the proxy can reach the server —
+that is the **one** place the localhost-only bind is relaxed, and it's safe only
+because the container's port is what you publish, not the process. Everywhere
+else `--serve` binds `127.0.0.1`.
+
+> 🔒 **Put auth in front of it.** Same rule as the tunnel: the page is your live
+> GitHub queue. Publish the port to `127.0.0.1` (`-p 127.0.0.1:4567:4567`) or
+> keep it on a private network behind an authenticating proxy. Never map it to a
+> public interface unauthenticated.
+
+Prefer a config file to `-e` flags? Mount one and point `KAMANDAR_CONFIG` at it:
+
+```sh
+docker run --rm -p 127.0.0.1:4567:4567 \
+  -v "$HOME/.config/kamandar/config:/config:ro" -e KAMANDAR_CONFIG=/config \
+  kamandar
+```
+
+`--demo` works in the container too (`docker run ... kamandar ruby lib/kamandar.rb
+--serve --no-open --demo`) — no token needed.
 
 ### Daily summary email (10 PM)
 
@@ -168,11 +209,13 @@ use `smtp.gmail.com` on port `587`. The SMTP password lives in `.env` (git-ignor
 > entirely (no token or login needed) — handy for screenshots, demos, or trying a
 > surface offline. It works with any surface (`--serve`, `--browser`, terminal).
 
-> **`--serve`** is the graphical app: a localhost-only web page with a sidebar +
-> tabbed buckets, in-page scope switching, a refresh button, and optional
-> auto-poll — pure HTML + CSS, no JavaScript. Pure stdlib (`TCPServer`), no gems,
-> bound to `127.0.0.1` only, and — like every surface — the token never reaches
-> the page. Use `--port N` (or `PORT`) to change the port.
+> **`--serve`** is the graphical app: a localhost-only, 3-column web dashboard —
+> bucket lanes in a left rail, a KPI row and one section per bucket in the
+> middle, queue widgets on the right — with in-page scope switching, a live
+> **Stale after** field, a refresh button, and optional auto-poll. Pure HTML +
+> CSS, no JavaScript. Pure stdlib (`TCPServer`), no gems, bound to `127.0.0.1`
+> only, and — like every surface — the token never reaches the page. Use
+> `--port N` (or `PORT`) to change the port.
 
 > `PROJECT_URL` is **optional** — the [scope picker](#-scope) asks for the board
 > URL when you choose `project`. Set it only if you want bucket #3
@@ -218,17 +261,28 @@ ln -s "$PWD/lib/kamandar.rb" ~/.local/bin/kamandar
 ```text
 Kamandar/
 ├── lib/
-│   └── kamandar.rb       # engine + all surfaces + local server (single file, stdlib only)
+│   └── kamandar.rb          # engine + all surfaces + local server (single file, stdlib only)
 ├── test/
-│   └── test_kamandar.rb  # acceptance tests — zero network, 254 cases
+│   └── test_kamandar.rb     # acceptance tests — zero network, 313 cases
 ├── assets/
-│   ├── logo-web.png      # brand mark (inlined into web surfaces; shown in this README)
-│   └── favicon.ico       # served at /favicon.ico by --serve
-├── install.sh            # symlink the CLI onto your PATH (stdlib only)
+│   ├── logo-web.png         # brand mark (inlined into web surfaces; shown in this README)
+│   ├── favicon.ico          # served at /favicon.ico by --serve
+│   └── generated/           # source renders of the logo (not shipped to any surface)
+├── service/                 # launchd agents (macOS)
+│   ├── com.kamandar.serve.plist   # always-on --serve (+ --tunnel) template
+│   ├── com.kamandar.digest.plist  # daily --email digest template
+│   ├── install-service.sh   / uninstall-service.sh
+│   └── install-digest.sh    / uninstall-digest.sh
+├── menubar/                 # SwiftBar/xbar plugin
+│   ├── kamandar.plugin.sh   # wrapper template rendered into the plugin folder
+│   └── install-menubar.sh   / uninstall-menubar.sh
+├── install.sh               # symlink the CLI onto your PATH (stdlib only)
+├── Dockerfile               # container image for --serve behind a reverse proxy
 ├── README.md
 ├── CONTRIBUTING.md
 ├── SECURITY.md
-├── V2.md                 # multi-provider roadmap (design only)
+├── FUNDING.md               # how to support the project
+├── V2.md                    # multi-provider roadmap (design only)
 └── LICENSE
 ```
 
@@ -261,6 +315,11 @@ Kamandar/
 | `--dashboard` | | off | Full-screen Matrix TUI: digital-rain splash, then live panels (`r` refresh, `q` quit). Needs an interactive TTY; falls back to plain output otherwise |
 | `--serve` | | off | Live web app: localhost-only HTTP server with in-page scope controls + refresh. Token never reaches the page |
 | `--port N` / `PORT` | | `4567` | Port for `--serve` (bound to `127.0.0.1` only) |
+| `--no-open` | | off | Don't auto-open a browser tab when `--serve` starts (headless: daemons, containers, SSH) |
+| `KAMANDAR_HOST` | | `127.0.0.1` | Bind address for `--serve`. **Only** change it inside a container or behind an authenticating proxy — see [Docker](#-docker) |
+| `KAMANDAR_CONFIG` | | — | Absolute path to the config file, overriding `$XDG_CONFIG_HOME/kamandar/config` and `~/.config/kamandar/config`. Used by the launchd agents and the menu-bar plugin to point at the repo `.env` |
+| `--menubar` | | off | Print a SwiftBar/xbar plugin document to stdout (one shot). See [Menu bar](#menu-bar---menubar) |
+| `--statuses` | | off | Diagnostic: print every board issue assigned to you with its exact **Status**, plus the distinct set — use it to fill the `*_STATUSES` vars |
 | `--tunnel [name]` / `KAMANDAR_TUNNEL` | | off | Spawn a [Cloudflare Tunnel](#remote-access-via-cloudflare-tunnel) child alongside `--serve` (implies `--serve`); tunnel name defaults to `kamandar`. Needs `cloudflared` on `PATH` |
 | `--demo` | | off | Render fabricated data (15–20 rows/bucket) with no network or token — for screenshots and offline trials |
 | `--email` | | off | Fetch the queue, build a plain-text digest, and send it over SMTP. With `--demo`, prints the digest instead of sending. Schedule via `service/install-digest.sh` |
@@ -377,6 +436,24 @@ flowchart LR
 Everything is guarded by `if __FILE__ == $PROGRAM_NAME` so the test suite can
 `require` the file with zero network and no ENV reads.
 
+### Network behavior
+
+One aliased GraphQL call fetches every PR bucket; the project board is fetched
+separately and paginated. Around that:
+
+- **Retries.** A transient connection failure (`Net::OpenTimeout`,
+  `Net::ReadTimeout`, `SocketError`, `SSLError`, `ECONNREFUSED`/`ECONNRESET`/
+  `EHOSTUNREACH`/`ENETUNREACH`) is retried **twice** with linear backoff
+  (1s, then 2s) — a flapping route usually recovers inside that window. HTTP and
+  GraphQL-level errors are **not** retried; they're real answers, not blips.
+- **Friendly failure.** Once attempts are exhausted you get
+  `could not reach GitHub (…) after 3 attempts. Check your connection and try
+  again.` — not a stack trace. Under `--serve`, a failed fetch renders an error
+  page instead of taking the server down.
+- **Spinner on stderr only.** Long fetches animate a spinner, but only when
+  stderr is a TTY — piped or redirected (cron, `| mail`) it's silent, and it
+  never writes to stdout, so captured reports stay clean.
+
 ---
 
 ## 🖥️ Surfaces
@@ -392,6 +469,7 @@ re-classifies.
 | 🔌 **Live web app** | `kamandar --serve` | an interactive, app-like UI | localhost listener |
 | 🏹 **Menu bar** | `kamandar --menubar` | an always-there macOS top-bar count | outbound only |
 | 📧 **Email** | `kamandar --email` | a scheduled daily digest to your inbox | outbound (SMTP) |
+| 🐳 **Container** | `docker run … kamandar` | `--serve` on a homelab box or VPS | published port |
 
 ### Terminal (default)
 
@@ -637,8 +715,16 @@ and fabricated fixtures — **zero network**.
 ```sh
 ruby test/test_kamandar.rb
 # ...
-# 254 passed, 0 failed
+# 313 passed, 0 failed
 ```
+
+The suite is the **spec of record**: it covers classification for both bucket
+sets, the handoff race, config resolution and precedence, the server's request
+parsing / response framing / scope resolution, retry + spinner behavior, and the
+token-never-in-output guarantee on every web surface. It's a hand-rolled
+`check`/`ok` harness — no Minitest, no RSpec, no gems — so there's no
+single-test runner; comment out cases to isolate one. Behavior changes should
+update tests in the same commit.
 
 ---
 
@@ -663,6 +749,12 @@ managers (Jira, Linear) is sketched in [V2.md](V2.md).
 - `--serve` is a **single-user, localhost-only** convenience: plain HTTP bound
   to `127.0.0.1`, no auth, one request at a time. Don't expose it to a network
   or proxy it to a public address — see [SECURITY.md](SECURITY.md).
+- `KAMANDAR_HOST=0.0.0.0` (what the [Docker](#-docker) image sets) removes the
+  localhost bind. It exists for containers behind a proxy — there is still **no
+  auth in the app itself**, so anything you put in front of it is the only gate.
+- The launchd service, the digest scheduler, and the menu-bar plugin are
+  **macOS-only**. The CLI itself runs anywhere Ruby 3.2+ does; the tunnel and
+  SwiftBar are external binaries you install yourself, not Ruby dependencies.
 - Single user, single token, no multi-tenant concerns.
 
 ---
@@ -670,6 +762,26 @@ managers (Jira, Linear) is sketched in [V2.md](V2.md).
 ## 🤝 Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md). Security policy in [SECURITY.md](SECURITY.md).
+
+Two constraints are non-negotiable in a PR: **stdlib only** (no gems, no
+Gemfile, no bundler) and **the engine stays pure** (no `Time.now`, ENV, or I/O
+inside `Engine` — `today:` and `mode:` are injected). Run
+`ruby test/test_kamandar.rb` before you open one.
+
+## ❤️ Support this project
+
+Kamandar is free, MIT, and built in the open. If it saves you the daily "what am
+I forgetting on GitHub" scan, see [FUNDING.md](FUNDING.md) — sponsorship,
+one-off support, and the free ways to help (stars, issues, PRs, telling someone).
+
+## 📬 Contact
+
+Questions, ideas, or "this broke on my board" — open an
+[issue](https://github.com/cdrrazan/Kamandar/issues), or email
+**[irajanbhattarai@gmail.com](mailto:irajanbhattarai@gmail.com)**.
+
+For **security reports**, don't use the issue tracker — follow
+[SECURITY.md](SECURITY.md) and email privately.
 
 ## 📄 License
 
